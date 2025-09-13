@@ -37,8 +37,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Addons", "Addons", "{B0A064
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{6759DD52-499D-4DFF-97BB-0202BAAE2130}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "youtube-dl-gui-test", "Tests\youtube-dl-gui-test\youtube-dl-gui-test.csproj", "{964C2F26-A878-4593-88E3-655C5B70F614}"
-EndProject
 Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "Controls", "Controls\Controls.shproj", "{E1ADAF73-4046-4046-9082-004B1890EA3A}"
 EndProject
 Global
@@ -56,10 +54,6 @@ Global
 		{EF3A6A93-AB14-4A2D-8474-2985C0D07253}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EF3A6A93-AB14-4A2D-8474-2985C0D07253}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EF3A6A93-AB14-4A2D-8474-2985C0D07253}.Release|Any CPU.Build.0 = Release|Any CPU
-		{964C2F26-A878-4593-88E3-655C5B70F614}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{964C2F26-A878-4593-88E3-655C5B70F614}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{964C2F26-A878-4593-88E3-655C5B70F614}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{964C2F26-A878-4593-88E3-655C5B70F614}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
