@@ -1,0 +1,111 @@
+name: Build and Release (WinForms)
+
+on:
+  push:
+    tags:
+      - 'v*'         # создавайте теги вида v1.2.3 — будет релиз
+  workflow_dispatch:  # руками из Actions тоже можно
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write   # нужно для публикации релиза
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      # Заменяем PreBuildEvent: создаём BuildDate.txt сами
+      - name: Prepare BuildDate.txt
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "youtube-dl-gui\Resources" -Force | Out-Null
+          $date = Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"
+          Set-Content -Path "youtube-dl-gui\Resources\BuildDate.txt" -Value $date -Encoding ASCII
+
+      # Сначала собираем апдейтер, чтобы потом положить его в Resources основного проекта
+      - name: Build updater (Release)
+        shell: pwsh
+        run: |
+          msbuild "youtube-dl-gui-updater\youtube-dl-gui-updater.csproj" ^
+            /t:Build ^
+            /p:Configuration=Release ^
+            /p:Platform="Any CPU" ^
+            /m
+
+      - name: Copy updater into main project resources
+        shell: pwsh
+        run: |
+          Copy-Item "youtube-dl-gui-updater\bin\Release\youtube-dl-gui-updater.exe" "youtube-dl-gui\Resources\youtube-dl-gui-updater.exe" -Force
+
+      # Теперь основной проект. Отключаем Pre/PostBuild события — всё делаем руками в workflow
+      - name: Build main app (Release, no pre/post events)
+        shell: pwsh
+        run: |
+          msbuild "youtube-dl-gui\youtube-dl-gui.csproj" ^
+            /t:Build ^
+            /p:Configuration=Release ^
+            /p:Platform="Any CPU" ^
+            /p:PreBuildEvent= ^
+            /p:PostBuildEvent= ^
+            /p:RunPostBuildEvent=Never ^
+            /m
+
+      - name: Prepare release folder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "Release\lang" -Force | Out-Null
+          Copy-Item "Languages\*.ini" "Release\lang\" -Force
+          Copy-Item "youtube-dl-gui\bin\Release\youtube-dl-gui.exe" "Release\youtube-dl-gui.exe" -Force
+          if (Test-Path "youtube-dl-gui\bin\Release\youtube-dl-gui.exe.config") {
+            Copy-Item "youtube-dl-gui\bin\Release\youtube-dl-gui.exe.config" "Release\" -Force
+          }
+
+      - name: Create zip
+        shell: pwsh
+        run: |
+          $zip = Join-Path $pwd "Release\youtube-dl-gui.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          $sevenZip = "${env:ProgramFiles}\7-Zip\7z.exe"
+          if (Test-Path $sevenZip) {
+            & "$sevenZip" a -tzip -mm=Deflate -mfb=128 "$zip" ".\Release\*"
+          } else {
+            Compress-Archive -Path ".\Release\*" -DestinationPath $zip -Force
+          }
+
+      - name: Generate checksums
+        shell: pwsh
+        run: |
+          Get-FileHash "Release\youtube-dl-gui.exe" -Algorithm SHA256 | % { "$($_.Hash)  youtube-dl-gui.exe" } | Out-File "Release\youtube-dl-gui.exe.sha256" -Encoding ASCII
+          Get-FileHash "Release\youtube-dl-gui.zip" -Algorithm SHA256 | % { "$($_.Hash)  youtube-dl-gui.zip" } | Out-File "Release\youtube-dl-gui.zip.sha256" -Encoding ASCII
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: |
+            Release/youtube-dl-gui.exe
+            Release/youtube-dl-gui.zip
+            Release/youtube-dl-gui.exe.sha256
+            Release/youtube-dl-gui.zip.sha256
+            Release/lang/
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}
+          files: |
+            Release/youtube-dl-gui.exe
+            Release/youtube-dl-gui.zip
+            Release/youtube-dl-gui.exe.sha256
+            Release/youtube-dl-gui.zip.sha256
