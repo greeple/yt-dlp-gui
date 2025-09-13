@@ -3,12 +3,12 @@ name: Build and Release
 on:
   push:
     tags:
-      - "v*.*.*"   # Например, v1.0.0
+      - "v*.*.*"
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - name: Checkout repository
@@ -36,7 +36,7 @@ jobs:
             youtube-dl-gui-updater/bin/Release/**
 
   release:
-    runs-on: windows-latest
+    runs-on: windows-2022
     needs: build
     steps:
       - name: Download build artifacts
