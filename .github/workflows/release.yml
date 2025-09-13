@@ -32,8 +32,8 @@ jobs:
           Set-Content -Path "youtube-dl-gui/Resources/BuildDate.txt" -Value $date
         shell: pwsh
         
-      - name: Build
-        run: msbuild youtube-dl-gui.sln /t:Build /p:Configuration=Release /p:Platform=AnyCPU /p:RunPreBuildEvent=Never
+      - name: Build solution
+        run: msbuild youtube-dl-gui.sln /t:Build /p:Configuration=Release /p:Platform="Any CPU" /p:RunPreBuildEvent=Never
       
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
