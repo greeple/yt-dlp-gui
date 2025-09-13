@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-2022
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup NuGet
@@ -21,31 +21,36 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Restore NuGet packages
-        run: nuget restore youtube-dl-gui.sln
+        run: nuget restore youtube-dl-gui.sln || echo "No packages to restore"
 
-      - name: Build solution
-        run: msbuild youtube-dl-gui.sln /t:Build /p:Configuration=Release /p:Platform="Any CPU"
+      # Сборка updater
+      - name: Build Updater
+        run: msbuild youtube-dl-gui-updater\youtube-dl-gui-updater.csproj /t:Build /p:Configuration=Release /p:Platform="Any CPU" /p:RunPreBuildEvent=Never
+
+      # Сборка основного GUI
+      - name: Build GUI
+        run: msbuild youtube-dl-gui\youtube-dl-gui.csproj /t:Build /p:Configuration=Release /p:Platform="Any CPU" /p:RunPreBuildEvent=Never
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: release-build
           path: |
-            Release/**
-            youtube-dl-gui/bin/Release/**
-            youtube-dl-gui-updater/bin/Release/**
+            youtube-dl-gui\bin\Release\**
+            youtube-dl-gui-updater\bin\Release\**
+            Release\**
 
   release:
-    runs-on: windows-2022
+    runs-on: windows-latest
     needs: build
     steps:
-      - name: Download build artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           name: release-build
           path: ./build
 
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: ./build/**
