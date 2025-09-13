@@ -22,20 +22,18 @@ jobs:
 
       - name: Restore NuGet packages
         run: nuget restore youtube-dl-gui.sln || echo "No packages to restore"
-        
+
+      # 🗓 Создаём BuildDate.txt
       - name: Set Build Date
         run: |
           $date = Get-Date -Format "yyyy-MM-dd"
           Set-Content -Path "youtube-dl-gui/Resources/BuildDate.txt" -Value $date
         shell: pwsh
 
-      # Сборка updater
-      - name: Build Updater
-        run: msbuild youtube-dl-gui-updater\youtube-dl-gui-updater.csproj /t:Build /p:Configuration=Release /p:Platform="Any CPU" /p:RunPreBuildEvent=Never
-
-      # Сборка основного GUI
-      - name: Build GUI
-        run: msbuild youtube-dl-gui\youtube-dl-gui.csproj /t:Build /p:Configuration=Release /p:Platform="Any CPU" /p:RunPreBuildEvent=Never
+      # 🏗 Сборка всего solution,
+      #    без тестов, без BuildDateWriter.exe
+      - name: Build solution
+        run: msbuild youtube-dl-gui.sln /t:Build /p:Configuration=Release /p:Platform="Any CPU" /p:RunPreBuildEvent=Never /ignoremissingprojects
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -47,7 +45,7 @@ jobs:
             Release\**
 
   release:
-    runs-on: windows-latest
+    runs-on: windows-2022
     needs: build
     steps:
       - name: Download artifacts
