@@ -9,9 +9,8 @@ on:
         type: string
 
 jobs:
-  build:
+    build:
     runs-on: windows-2022
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,29 +24,38 @@ jobs:
       - name: Restore NuGet packages
         run: nuget restore youtube-dl-gui.sln || echo "No packages to restore"
 
-      # 🗓 Генерация BuildDate.txt в нужном формате YYYY-MM-DD
+      # 🗓 Создаём BuildDate.txt
       - name: Set Build Date
         run: |
           $date = Get-Date -Format "yyyy-MM-dd"
           Set-Content -Path "youtube-dl-gui/Resources/BuildDate.txt" -Value $date
         shell: pwsh
-        
+
+      # 🏗 Сборка решения
       - name: Build solution
-        run: msbuild youtube-dl-gui.sln /t:Build /p:Configuration=Release /p:Platform="Any CPU" /p:RunPreBuildEvent=Never
-      
+        run: msbuild youtube-dl-gui.sln /t:Build /p:Configuration=Release /p:Platform="Any CPU" /p:RunPreBuildEvent=Off /p:RunPostBuildEvent=Off
+
+      # 🗜 Упаковка
+      - name: Prepare dist folder
+        run: |
+          mkdir dist
+          copy youtube-dl-gui\bin\Release\youtube-dl-gui.exe dist\
+          copy youtube-dl-gui-updater\bin\Release\youtube-dl-gui-updater.exe dist\
+          xcopy Languages dist\lang\ /Y
+          "C:\Program Files\7-Zip\7z.exe" a dist\youtube-dl-gui.zip dist\*
+          "C:\Program Files\7-Zip\7z.exe" a dist\lang.zip Languages\*.ini
+        shell: cmd
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: release-build
-          path: |
-            youtube-dl-gui\bin\Release\**
-            youtube-dl-gui-updater\bin\Release\**
-            Release\**
+          path: dist\**
 
-  release:
-    runs-on: windows-2022
-    needs: build
-    steps:
+    release:
+      runs-on: windows-2022
+      needs: build
+      steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -60,8 +68,11 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag }}
           fail_on_unmatched_files: true
-          files: ./build/**
+          overwrite_files: true
+          files: |
+            ./build/youtube-dl-gui.exe
+            ./build/youtube-dl-gui-updater.exe
+            ./build/youtube-dl-gui.zip
+            ./build/lang.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    outputs:
-      assets: ${{ steps.publish.outputs.assets }}
