@@ -358,13 +358,11 @@
   <Import Project="..\Controls\Controls.projitems" Label="Shared" />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PreBuildEvent>if $(ConfigurationName) == Release "BuildDateWriter.exe" "$(ProjectDir)\Resources\BuildDate.txt"</PreBuildEvent>
-  </PropertyGroup>
-  <PropertyGroup>
     <PostBuildEvent>if $(ConfigurationName) == Release xcopy "$(SolutionDir)Languages\*.ini" "$(SolutionDir)Release\lang\*.ini" /y
 if $(ConfigurationName) == Release copy "$(TargetPath)" "$(SolutionDir)Release"
 if $(ConfigurationName) == Release (del "$(SolutionDir)Release\$(ProjectName).zip")
 if $(ConfigurationName) == Release (7z a -mm=Deflate -mfb=128 -r "$(SolutionDir)Release\$(ProjectName).zip" "$(SolutionDir)Release\*")
 if $(ConfigurationName) == Release "$(SolutionDir)HashCalcConsole.exe" "$(SolutionDir)Release\$(ProjectName).exe" "$(SolutionDir)Release\$(ProjectName).zip"</PostBuildEvent>
   </PropertyGroup>
+
 </Project>
