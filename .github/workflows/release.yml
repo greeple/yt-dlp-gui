@@ -10,8 +10,8 @@ on:
 
 jobs:
     build:
-    runs-on: windows-2022
-    steps:
+      runs-on: windows-2022
+      steps:
       - name: Checkout
         uses: actions/checkout@v4
 
