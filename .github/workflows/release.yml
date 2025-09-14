@@ -9,9 +9,9 @@ on:
         type: string
 
 jobs:
-    build:
-      runs-on: windows-2022
-      steps:
+  build:
+    runs-on: windows-2022
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -52,21 +52,33 @@ jobs:
           name: release-build
           path: dist\**
 
-    release:
-      runs-on: windows-2022
-      needs: build
-      steps:
+  release:
+    runs-on: windows-2022
+    needs: build
+    steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           name: release-build
           path: ./build
 
+      - name: Detect release type
+        id: vars
+        run: |
+          $tag = "${{ github.event.inputs.tag }}"
+          if ($tag -match '^\d+\.\d+\.\d+$') {
+            echo "prerelease=false" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "prerelease=true" >> $env:GITHUB_OUTPUT
+          }
+        shell: pwsh
+
       - name: Create GitHub Release
         id: publish
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag }}
+          prerelease: ${{ steps.vars.outputs.prerelease }}
           fail_on_unmatched_files: true
           overwrite_files: true
           files: |
