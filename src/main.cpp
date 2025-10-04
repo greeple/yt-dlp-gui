@@ -14,6 +14,9 @@ HWND hMainWindow;
 HWND hUrlEdit, hOutputEdit, hQualityCombo, hFormatCombo;
 HWND hDownloadBtn, hBrowseBtn, hProgressBar, hStatusText;
 HWND hLogEdit, hToggleLogBtn, hTabControl, hPresetCombo;
+HWND hLblProxy, hLblWait, hLblSections;
+HWND hLblConvSubs, hLblConvSubsHint, hLblConvThumb, hLblConvThumbHint;
+HWND hLblMerge, hLblMergeHint, hLblSort, hLblExtractor, hLblHeaders, hLblCookies;
 
 // Вкладки
 HWND hTab1, hTab2, hTab3;
@@ -460,19 +463,25 @@ void CreateTabs(HWND hwnd) {
                                 WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
                                 10, 228, 560, 185, hwnd, (HMENU)IDC_TAB, NULL, NULL);
     
+    // Важно: выделяем память для строк статически
+    static wchar_t szTab1[100], szTab2[100], szTab3[100];
+    wcscpy_s(szTab1, 100, L"Основные опции");
+    wcscpy_s(szTab2, 100, L"Встраивание / Конвертация");
+    wcscpy_s(szTab3, 100, L"Продвинутые");
+    
     TCITEMW tie = {0};
     tie.mask = TCIF_TEXT;
     
-    wchar_t tab1[] = L"Основные опции";
-    tie.pszText = tab1;
+    tie.pszText = szTab1;
+    tie.cchTextMax = wcslen(szTab1);
     TabCtrl_InsertItem(hTabControl, 0, &tie);
     
-    wchar_t tab2[] = L"Встраивание / Конвертация";
-    tie.pszText = tab2;
+    tie.pszText = szTab2;
+    tie.cchTextMax = wcslen(szTab2);
     TabCtrl_InsertItem(hTabControl, 1, &tie);
     
-    wchar_t tab3[] = L"Продвинутые";
-    tie.pszText = tab3;
+    tie.pszText = szTab3;
+    tie.cchTextMax = wcslen(szTab3);
     TabCtrl_InsertItem(hTabControl, 2, &tie);
 }
 
@@ -506,15 +515,15 @@ void CreateTabContent(HWND hwnd) {
                                     (HMENU)IDC_CHK_LIST_FORMATS, NULL, NULL);
     
     // Метки и поля справа
-    HWND hLblProxy = CreateWindowW(L"STATIC", L"Proxy URL:", WS_CHILD, tabX + 280, tabY, 100, 18, hwnd, NULL, NULL, NULL);
+    hLblProxy = CreateWindowW(L"STATIC", L"Proxy URL:", WS_CHILD | SS_LEFT, tabX + 280, tabY, 100, 18, hwnd, NULL, NULL, NULL);
     hEditProxy = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                  tabX + 280, tabY + 20, 250, 22, hwnd, NULL, NULL, NULL);
     
-    HWND hLblWait = CreateWindowW(L"STATIC", L"Ожидание видео (сек):", WS_CHILD, tabX + 280, tabY + 50, 150, 18, hwnd, NULL, NULL, NULL);
+    hLblWait = CreateWindowW(L"STATIC", L"Ожидание видео (сек):", WS_CHILD | SS_LEFT, tabX + 280, tabY + 50, 150, 18, hwnd, NULL, NULL, NULL);
     hEditWaitForVideo = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                         tabX + 280, tabY + 70, 250, 22, hwnd, NULL, NULL, NULL);
     
-    HWND hLblSections = CreateWindowW(L"STATIC", L"Секции для загрузки:", WS_CHILD, tabX + 280, tabY + 100, 150, 18, hwnd, NULL, NULL, NULL);
+    hLblSections = CreateWindowW(L"STATIC", L"Секции для загрузки:", WS_CHILD | SS_LEFT, tabX + 280, tabY + 100, 150, 18, hwnd, NULL, NULL, NULL);
     hEditDownloadSections = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                             tabX + 280, tabY + 120, 250, 22, hwnd, NULL, NULL, NULL);
     
@@ -543,35 +552,35 @@ void CreateTabContent(HWND hwnd) {
                                      WS_CHILD | BS_AUTOCHECKBOX, tabX, tabY + 125, 280, 20, hwnd, 
                                      (HMENU)IDC_CHK_CHECK_FORMATS, NULL, NULL);
     
-    HWND hLblConvSubs = CreateWindowW(L"STATIC", L"Конвертировать субтитры:", WS_CHILD, tabX + 300, tabY, 150, 18, hwnd, NULL, NULL, NULL);
+    hLblConvSubs = CreateWindowW(L"STATIC", L"Конвертировать субтитры:", WS_CHILD | SS_LEFT, tabX + 300, tabY, 150, 18, hwnd, NULL, NULL, NULL);
     hEditConvertSubs = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                        tabX + 300, tabY + 20, 220, 22, hwnd, NULL, NULL, NULL);
-    HWND hLblConvSubsHint = CreateWindowW(L"STATIC", L"(srt, ass, vtt)", WS_CHILD, tabX + 300, tabY + 44, 150, 18, hwnd, NULL, NULL, NULL);
+    hLblConvSubsHint = CreateWindowW(L"STATIC", L"(srt, ass, vtt)", WS_CHILD | SS_LEFT, tabX + 300, tabY + 44, 150, 18, hwnd, NULL, NULL, NULL);
     
-    HWND hLblConvThumb = CreateWindowW(L"STATIC", L"Конвертировать превью:", WS_CHILD, tabX + 300, tabY + 70, 150, 18, hwnd, NULL, NULL, NULL);
+    hLblConvThumb = CreateWindowW(L"STATIC", L"Конвертировать превью:", WS_CHILD | SS_LEFT, tabX + 300, tabY + 70, 150, 18, hwnd, NULL, NULL, NULL);
     hEditConvertThumbnails = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                              tabX + 300, tabY + 90, 220, 22, hwnd, NULL, NULL, NULL);
-    HWND hLblConvThumbHint = CreateWindowW(L"STATIC", L"(jpg, png, webp)", WS_CHILD, tabX + 300, tabY + 114, 150, 18, hwnd, NULL, NULL, NULL);
+    hLblConvThumbHint = CreateWindowW(L"STATIC", L"(jpg, png, webp)", WS_CHILD | SS_LEFT, tabX + 300, tabY + 114, 150, 18, hwnd, NULL, NULL, NULL);
     
     // === ВКЛАДКА 3: Продвинутые ===
-    HWND hLblMerge = CreateWindowW(L"STATIC", L"Формат слияния:", WS_CHILD, tabX, tabY, 120, 18, hwnd, NULL, NULL, NULL);
+    hLblMerge = CreateWindowW(L"STATIC", L"Формат слияния:", WS_CHILD | SS_LEFT, tabX, tabY, 120, 18, hwnd, NULL, NULL, NULL);
     hEditMergeFormat = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                        tabX, tabY + 20, 250, 22, hwnd, NULL, NULL, NULL);
-    HWND hLblMergeHint = CreateWindowW(L"STATIC", L"(mp4, mkv, webm...)", WS_CHILD, tabX, tabY + 44, 150, 18, hwnd, NULL, NULL, NULL);
+    hLblMergeHint = CreateWindowW(L"STATIC", L"(mp4, mkv, webm...)", WS_CHILD | SS_LEFT, tabX, tabY + 44, 150, 18, hwnd, NULL, NULL, NULL);
     
-    HWND hLblSort = CreateWindowW(L"STATIC", L"Сортировка форматов (-S):", WS_CHILD, tabX, tabY + 70, 180, 18, hwnd, NULL, NULL, NULL);
+    hLblSort = CreateWindowW(L"STATIC", L"Сортировка форматов (-S):", WS_CHILD | SS_LEFT, tabX, tabY + 70, 180, 18, hwnd, NULL, NULL, NULL);
     hEditFormatSort = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                       tabX, tabY + 90, 250, 22, hwnd, NULL, NULL, NULL);
     
-    HWND hLblExtractor = CreateWindowW(L"STATIC", L"Extractor Args:", WS_CHILD, tabX + 280, tabY, 120, 18, hwnd, NULL, NULL, NULL);
+    hLblExtractor = CreateWindowW(L"STATIC", L"Extractor Args:", WS_CHILD | SS_LEFT, tabX + 280, tabY, 120, 18, hwnd, NULL, NULL, NULL);
     hEditExtractorArgs = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                          tabX + 280, tabY + 20, 250, 22, hwnd, NULL, NULL, NULL);
     
-    HWND hLblHeaders = CreateWindowW(L"STATIC", L"Заголовки (Headers):", WS_CHILD, tabX + 280, tabY + 50, 150, 18, hwnd, NULL, NULL, NULL);
+    hLblHeaders = CreateWindowW(L"STATIC", L"Заголовки (Headers):", WS_CHILD | SS_LEFT, tabX + 280, tabY + 50, 150, 18, hwnd, NULL, NULL, NULL);
     hEditAddHeaders = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                       tabX + 280, tabY + 70, 250, 22, hwnd, NULL, NULL, NULL);
     
-    HWND hLblCookies = CreateWindowW(L"STATIC", L"Cookies файл:", WS_CHILD, tabX, tabY + 120, 100, 18, hwnd, NULL, NULL, NULL);
+    hLblCookies = CreateWindowW(L"STATIC", L"Cookies файл:", WS_CHILD | SS_LEFT, tabX, tabY + 120, 100, 18, hwnd, NULL, NULL, NULL);
     hEditCookiesFile = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL | ES_READONLY,
                                        tabX + 110, tabY + 120, 280, 22, hwnd, NULL, NULL, NULL);
     hBtnBrowseCookies = CreateWindowW(L"BUTTON", L"...", WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
@@ -612,6 +621,9 @@ void SwitchTab(int tabIndex) {
     ShowWindow(hEditProxy, SW_HIDE);
     ShowWindow(hEditWaitForVideo, SW_HIDE);
     ShowWindow(hEditDownloadSections, SW_HIDE);
+    ShowWindow(hLblProxy, SW_HIDE);
+    ShowWindow(hLblWait, SW_HIDE);
+    ShowWindow(hLblSections, SW_HIDE);
     
     ShowWindow(hChkEmbedSubs, SW_HIDE);
     ShowWindow(hChkEmbedThumbnail, SW_HIDE);
@@ -621,6 +633,10 @@ void SwitchTab(int tabIndex) {
     ShowWindow(hChkCheckFormats, SW_HIDE);
     ShowWindow(hEditConvertSubs, SW_HIDE);
     ShowWindow(hEditConvertThumbnails, SW_HIDE);
+    ShowWindow(hLblConvSubs, SW_HIDE);
+    ShowWindow(hLblConvSubsHint, SW_HIDE);
+    ShowWindow(hLblConvThumb, SW_HIDE);
+    ShowWindow(hLblConvThumbHint, SW_HIDE);
     
     ShowWindow(hEditMergeFormat, SW_HIDE);
     ShowWindow(hEditFormatSort, SW_HIDE);
@@ -629,23 +645,12 @@ void SwitchTab(int tabIndex) {
     ShowWindow(hEditCookiesFile, SW_HIDE);
     ShowWindow(hBtnBrowseCookies, SW_HIDE);
     ShowWindow(hChkNoCache, SW_HIDE);
-    
-    // Скрыть все текстовые метки
-    HWND hChild = GetWindow(hMainWindow, GW_CHILD);
-    while (hChild) {
-        wchar_t className[256];
-        GetClassNameW(hChild, className, 256);
-        if (wcscmp(className, L"STATIC") == 0) {
-            RECT rect;
-            GetWindowRect(hChild, &rect);
-            POINT pt = { rect.left, rect.top };
-            ScreenToClient(hMainWindow, &pt);
-            if (pt.y > 250 && pt.y < 420) {
-                ShowWindow(hChild, SW_HIDE);
-            }
-        }
-        hChild = GetWindow(hChild, GW_HWNDNEXT);
-    }
+    ShowWindow(hLblMerge, SW_HIDE);
+    ShowWindow(hLblMergeHint, SW_HIDE);
+    ShowWindow(hLblSort, SW_HIDE);
+    ShowWindow(hLblExtractor, SW_HIDE);
+    ShowWindow(hLblHeaders, SW_HIDE);
+    ShowWindow(hLblCookies, SW_HIDE);
     
     // Показать элементы выбранной вкладки
     switch (tabIndex) {
@@ -658,6 +663,9 @@ void SwitchTab(int tabIndex) {
             ShowWindow(hEditProxy, SW_SHOW);
             ShowWindow(hEditWaitForVideo, SW_SHOW);
             ShowWindow(hEditDownloadSections, SW_SHOW);
+            ShowWindow(hLblProxy, SW_SHOW);
+            ShowWindow(hLblWait, SW_SHOW);
+            ShowWindow(hLblSections, SW_SHOW);
             break;
         case 1: // Встраивание
             ShowWindow(hChkEmbedSubs, SW_SHOW);
@@ -668,6 +676,10 @@ void SwitchTab(int tabIndex) {
             ShowWindow(hChkCheckFormats, SW_SHOW);
             ShowWindow(hEditConvertSubs, SW_SHOW);
             ShowWindow(hEditConvertThumbnails, SW_SHOW);
+            ShowWindow(hLblConvSubs, SW_SHOW);
+            ShowWindow(hLblConvSubsHint, SW_SHOW);
+            ShowWindow(hLblConvThumb, SW_SHOW);
+            ShowWindow(hLblConvThumbHint, SW_SHOW);
             break;
         case 2: // Продвинутые
             ShowWindow(hEditMergeFormat, SW_SHOW);
@@ -677,8 +689,15 @@ void SwitchTab(int tabIndex) {
             ShowWindow(hEditCookiesFile, SW_SHOW);
             ShowWindow(hBtnBrowseCookies, SW_SHOW);
             ShowWindow(hChkNoCache, SW_SHOW);
+            ShowWindow(hLblMerge, SW_SHOW);
+            ShowWindow(hLblMergeHint, SW_SHOW);
+            ShowWindow(hLblSort, SW_SHOW);
+            ShowWindow(hLblExtractor, SW_SHOW);
+            ShowWindow(hLblHeaders, SW_SHOW);
+            ShowWindow(hLblCookies, SW_SHOW);
             break;
     }
+}
     
     // Показать соответствующие метки
     hChild = GetWindow(hMainWindow, GW_CHILD);
@@ -897,91 +916,116 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 }
             }
             else if (LOWORD(wParam) == IDC_SAVE_PRESET && HIWORD(wParam) == BN_CLICKED) {
-                wchar_t presetName[256] = L"";
-                
-                // Диалог ввода имени пресета
-                HWND hDlg = CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_TOPMOST,
-                                           L"#32770", L"Сохранить пресет",
-                                           WS_POPUP | WS_CAPTION | WS_SYSMENU,
-                                           0, 0, 350, 150, hwnd, NULL, NULL, NULL);
-                
-                if (hDlg) {
-                    // Центрирование диалога
-                    RECT rcParent, rcDlg;
-                    GetWindowRect(hwnd, &rcParent);
-                    GetWindowRect(hDlg, &rcDlg);
-                    SetWindowPos(hDlg, NULL,
-                                rcParent.left + (rcParent.right - rcParent.left - (rcDlg.right - rcDlg.left)) / 2,
-                                rcParent.top + (rcParent.bottom - rcParent.top - (rcDlg.bottom - rcDlg.top)) / 2,
-                                0, 0, SWP_NOSIZE);
-                    
-                    CreateWindowW(L"STATIC", L"Введите имя пресета:",
-                                 WS_VISIBLE | WS_CHILD,
-                                 20, 20, 300, 20, hDlg, NULL, NULL, NULL);
-                    
-                    HWND hEditPreset = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
-                                                       WS_VISIBLE | WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
-                                                       20, 45, 310, 24, hDlg, NULL, NULL, NULL);
-                    
-                    HWND hBtnOK = CreateWindowW(L"BUTTON", L"Сохранить",
-                                               WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_DEFPUSHBUTTON,
-                                               120, 80, 100, 30, hDlg, (HMENU)IDOK, NULL, NULL);
-                    
-                    HWND hBtnCancel = CreateWindowW(L"BUTTON", L"Отмена",
-                                                   WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
-                                                   230, 80, 100, 30, hDlg, (HMENU)IDCANCEL, NULL, NULL);
-                    
-                    SetFocus(hEditPreset);
-                    ShowWindow(hDlg, SW_SHOW);
-                    
-                    // Простой цикл сообщений для модального диалога
-                    MSG msg;
-                    bool running = true;
-                    bool saved = false;
-                    
-                    while (running && GetMessage(&msg, NULL, 0, 0)) {
-                        if (msg.message == WM_COMMAND) {
-                            if (LOWORD(msg.wParam) == IDOK) {
-                                GetWindowTextW(hEditPreset, presetName, 256);
-                                if (wcslen(presetName) > 0) {
-                                    saved = true;
-                                    running = false;
-                                }
-                            } else if (LOWORD(msg.wParam) == IDCANCEL) {
-                                running = false;
-                            }
-                        } else if (msg.message == WM_CLOSE) {
-                            running = false;
+    // Создаем простой диалог для ввода имени
+    HWND hDialog = CreateWindowExW(
+        WS_EX_DLGMODALFRAME | WS_EX_TOPMOST,
+        L"STATIC",
+        L"Сохранить пресет",
+        WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
+        0, 0, 400, 150,
+        hwnd,
+        NULL,
+        GetModuleHandle(NULL),
+        NULL
+    );
+    
+    if (hDialog) {
+        // Центрируем диалог
+        RECT rcParent, rcDlg;
+        GetWindowRect(hwnd, &rcParent);
+        GetWindowRect(hDialog, &rcDlg);
+        int x = rcParent.left + (rcParent.right - rcParent.left - (rcDlg.right - rcDlg.left)) / 2;
+        int y = rcParent.top + (rcParent.bottom - rcParent.top - (rcDlg.bottom - rcDlg.top)) / 2;
+        SetWindowPos(hDialog, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+        
+        // Создаем элементы диалога
+        HFONT hDlgFont = CreateFontW(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                     CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+        
+        HWND hLabel = CreateWindowW(L"STATIC", L"Введите имя пресета:",
+                                   WS_VISIBLE | WS_CHILD | SS_LEFT,
+                                   20, 20, 360, 20, hDialog, NULL, NULL, NULL);
+        SendMessage(hLabel, WM_SETFONT, (WPARAM)hDlgFont, TRUE);
+        
+        HWND hEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
+                                    WS_VISIBLE | WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
+                                    20, 45, 360, 26, hDialog, (HMENU)100, NULL, NULL);
+        SendMessage(hEdit, WM_SETFONT, (WPARAM)hDlgFont, TRUE);
+        SetFocus(hEdit);
+        
+        HWND hBtnOk = CreateWindowW(L"BUTTON", L"Сохранить",
+                                   WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_DEFPUSHBUTTON,
+                                   170, 85, 100, 32, hDialog, (HMENU)IDOK, NULL, NULL);
+        SendMessage(hBtnOk, WM_SETFONT, (WPARAM)hDlgFont, TRUE);
+        
+        HWND hBtnCancel = CreateWindowW(L"BUTTON", L"Отмена",
+                                       WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
+                                       280, 85, 100, 32, hDialog, (HMENU)IDCANCEL, NULL, NULL);
+        SendMessage(hBtnCancel, WM_SETFONT, (WPARAM)hDlgFont, TRUE);
+        
+        // Простой цикл сообщений
+        MSG msg;
+        bool dialogRunning = true;
+        bool saved = false;
+        wchar_t presetName[256] = L"";
+        
+        EnableWindow(hwnd, FALSE); // Блокируем главное окно
+        
+        while (dialogRunning && GetMessage(&msg, NULL, 0, 0)) {
+            if (msg.hwnd == hDialog || IsChild(hDialog, msg.hwnd)) {
+                if (msg.message == WM_COMMAND) {
+                    if (LOWORD(msg.wParam) == IDOK) {
+                        GetWindowTextW(hEdit, presetName, 256);
+                        if (wcslen(presetName) > 0) {
+                            saved = true;
+                            dialogRunning = false;
+                        } else {
+                            MessageBoxW(hDialog, L"Введите имя пресета!", L"Ошибка", MB_ICONWARNING);
                         }
-                        
-                        if (!IsDialogMessage(hDlg, &msg)) {
-                            TranslateMessage(&msg);
-                            DispatchMessage(&msg);
-                        }
+                    } else if (LOWORD(msg.wParam) == IDCANCEL) {
+                        dialogRunning = false;
                     }
-                    
-                    DestroyWindow(hDlg);
-                    
-                    if (saved && wcslen(presetName) > 0) {
-                        SaveSettingsFromUI();
-                        settings.Save(presetName);
-                        LoadPresetsToCombo();
-                        
-                        // Выбрать сохраненный пресет
-                        int count = SendMessage(hPresetCombo, CB_GETCOUNT, 0, 0);
-                        for (int i = 1; i < count; i++) {
-                            wchar_t text[256];
-                            SendMessageW(hPresetCombo, CB_GETLBTEXT, i, (LPARAM)text);
-                            if (wcscmp(text, presetName) == 0) {
-                                SendMessage(hPresetCombo, CB_SETCURSEL, i, 0);
-                                break;
-                            }
-                        }
-                        
-                        MessageBoxW(hwnd, L"Пресет успешно сохранен!", L"Успех", MB_ICONINFORMATION);
-                    }
+                } else if (msg.message == WM_CLOSE) {
+                    dialogRunning = false;
+                }
+                
+                if (!IsDialogMessage(hDialog, &msg)) {
+                    TranslateMessage(&msg);
+                    DispatchMessage(&msg);
+                }
+            } else {
+                TranslateMessage(&msg);
+                DispatchMessage(&msg);
+            }
+        }
+        
+        EnableWindow(hwnd, TRUE); // Разблокируем главное окно
+        SetFocus(hwnd);
+        DestroyWindow(hDialog);
+        DeleteObject(hDlgFont);
+        
+        // Сохраняем пресет
+        if (saved && wcslen(presetName) > 0) {
+            SaveSettingsFromUI();
+            settings.Save(presetName);
+            LoadPresetsToCombo();
+            
+            // Выбираем сохраненный пресет
+            int count = SendMessage(hPresetCombo, CB_GETCOUNT, 0, 0);
+            for (int i = 1; i < count; i++) {
+                wchar_t text[256];
+                SendMessageW(hPresetCombo, CB_GETLBTEXT, i, (LPARAM)text);
+                if (wcscmp(text, presetName) == 0) {
+                    SendMessage(hPresetCombo, CB_SETCURSEL, i, 0);
+                    break;
                 }
             }
+            
+            MessageBoxW(hwnd, L"Пресет успешно сохранен!", L"Успех", MB_ICONINFORMATION);
+        }
+    }
+}
             else if (LOWORD(wParam) == IDC_DELETE_PRESET && HIWORD(wParam) == BN_CLICKED) {
                 int idx = SendMessage(hPresetCombo, CB_GETCURSEL, 0, 0);
                 if (idx > 0) {
