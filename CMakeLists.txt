@@ -16,13 +16,24 @@ if(WIN32)
         ole32
     )
     
-    # Статическая линковка для portable exe
+    # Добавляем флаг для UTF-8
+    target_compile_options(yt-dlp-gui PRIVATE
+        -finput-charset=UTF-8
+        -fexec-charset=UTF-8
+    )
+    
+    # Статическая линковка
     if(MINGW)
         target_link_options(yt-dlp-gui PRIVATE
             -static-libgcc
             -static-libstdc++
             -static
-            -lpthread
+            -municode
         )
     endif()
+    
+    # Указываем что используем Unicode entry point
+    set_target_properties(yt-dlp-gui PROPERTIES
+        LINK_FLAGS "-municode"
+    )
 endif()
