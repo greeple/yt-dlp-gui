@@ -457,7 +457,7 @@ void BrowseFile(HWND hEditControl, const wchar_t* filter, const wchar_t* title) 
 void CreateTabs(HWND hwnd) {
     // Tab Control
     hTabControl = CreateWindowW(WC_TABCONTROLW, L"", 
-                                WS_CHILD | WS_VISIBLE | WS_CLIPPING,
+                                WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
                                 10, 228, 560, 185, hwnd, (HMENU)IDC_TAB, NULL, NULL);
     
     TCITEMW tie;
