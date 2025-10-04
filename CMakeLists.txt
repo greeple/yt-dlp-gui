@@ -7,8 +7,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(WIN32)
     add_executable(yt-dlp-gui WIN32
         src/main.cpp
+        src/settings.cpp
         src/app.rc
     )
+    
+    target_include_directories(yt-dlp-gui PRIVATE src)
     
     target_link_libraries(yt-dlp-gui
         comctl32
@@ -16,7 +19,7 @@ if(WIN32)
         ole32
     )
     
-    # Добавляем флаг для UTF-8
+    # Добавляем флаги для UTF-8
     target_compile_options(yt-dlp-gui PRIVATE
         -finput-charset=UTF-8
         -fexec-charset=UTF-8
