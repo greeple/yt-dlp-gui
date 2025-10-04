@@ -1,8 +1,30 @@
 #ifndef RESOURCE_H
 #define RESOURCE_H
 
-#define IDC_DOWNLOAD    1001
-#define IDC_BROWSE      1002
-#define IDC_TOGGLE_LOG  1003
+#define IDC_DOWNLOAD        1001
+#define IDC_BROWSE          1002
+#define IDC_TOGGLE_LOG      1003
+#define IDC_TAB             1004
+#define IDC_PRESET_COMBO    1005
+#define IDC_SAVE_PRESET     1006
+#define IDC_DELETE_PRESET   1007
+#define IDC_BROWSE_BATCH    1008
+#define IDC_BROWSE_COOKIES  1009
+#define IDC_BROWSE_CACHE    1010
+
+// Checkboxes
+#define IDC_CHK_IGNORE_CONFIG       1100
+#define IDC_CHK_LIVE_FROM_START     1101
+#define IDC_CHK_NO_CACHE            1102
+#define IDC_CHK_SKIP_DOWNLOAD       1103
+#define IDC_CHK_SAVE_JSON           1104
+#define IDC_CHK_LIST_FORMATS        1105
+#define IDC_CHK_CHECK_FORMATS       1106
+#define IDC_CHK_EMBED_SUBS          1107
+#define IDC_CHK_EMBED_THUMBNAIL     1108
+#define IDC_CHK_EMBED_METADATA      1109
+#define IDC_CHK_EMBED_CHAPTERS      1110
+#define IDC_CHK_SPLIT_CHAPTERS      1111
+#define IDC_CHK_FORCE_KEYFRAMES     1112
 
 #endif
