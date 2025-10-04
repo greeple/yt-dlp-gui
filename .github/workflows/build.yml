@@ -30,17 +30,16 @@ jobs:
         cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release ..
         ninja
     
-    - name: Download yt-dlp
-      shell: pwsh
-      run: |
-        Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "build/yt-dlp.exe"
-    
+    #- name: Download yt-dlp
+     # shell: pwsh
+     # run: |
+    #    Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "build/yt-dlp.exe"
+    # Copy-Item "build/yt-dlp.exe" "release/"
     - name: Create release package
       shell: pwsh
       run: |
         New-Item -ItemType Directory -Force -Path release
         Copy-Item "build/yt-dlp-gui.exe" "release/"
-        Copy-Item "build/yt-dlp.exe" "release/"
         
         # Создаем README
         @"
