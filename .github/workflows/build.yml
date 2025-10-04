@@ -1,0 +1,81 @@
+name: Build Windows GUI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup MinGW
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-ninja
+          make
+    
+    - name: Build application
+      shell: msys2 {0}
+      run: |
+        mkdir build
+        cd build
+        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release ..
+        ninja
+    
+    - name: Download yt-dlp
+      shell: pwsh
+      run: |
+        Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "build/yt-dlp.exe"
+    
+    - name: Create release package
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path release
+        Copy-Item "build/yt-dlp-gui.exe" "release/"
+        Copy-Item "build/yt-dlp.exe" "release/"
+        
+        # Создаем README
+        @"
+        # yt-dlp GUI
+        
+        ## Использование
+        1. Запустите yt-dlp-gui.exe
+        2. Вставьте URL видео
+        3. Выберите качество и формат
+        4. Нажмите 'Скачать'
+        
+        ## Требования
+        - Windows 7 или новее
+        - yt-dlp.exe должен быть в той же папке или в PATH
+        
+        ## Возможности
+        - Скачивание видео в различных качествах (480p - 4K)
+        - Извлечение только аудио (MP3)
+        - Выбор папки сохранения
+        - Отображение прогресса загрузки
+        "@ | Out-File -FilePath "release/README.txt" -Encoding UTF8
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: yt-dlp-gui-windows
+        path: release/
+    
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          release/yt-dlp-gui.exe
+          release/yt-dlp.exe
+          release/README.txt
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
