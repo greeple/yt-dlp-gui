@@ -35,8 +35,8 @@ HWND hBtnSavePreset, hBtnDeletePreset;
 
 bool isDownloading = false;
 bool isLogVisible = false;
-int normalHeight = 480;
-int expandedHeight = 730;
+int normalHeight = 640;
+int expandedHeight = 890;
 
 Settings settings;
 std::wstring currentPreset;
@@ -460,16 +460,19 @@ void CreateTabs(HWND hwnd) {
                                 WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
                                 10, 228, 560, 185, hwnd, (HMENU)IDC_TAB, NULL, NULL);
     
-    TCITEMW tie;
+    TCITEMW tie = {0};
     tie.mask = TCIF_TEXT;
     
-    tie.pszText = (LPWSTR)L"Основные опции";
+    wchar_t tab1[] = L"Основные опции";
+    tie.pszText = tab1;
     TabCtrl_InsertItem(hTabControl, 0, &tie);
     
-    tie.pszText = (LPWSTR)L"Встраивание / Конвертация";
+    wchar_t tab2[] = L"Встраивание / Конвертация";
+    tie.pszText = tab2;
     TabCtrl_InsertItem(hTabControl, 1, &tie);
     
-    tie.pszText = (LPWSTR)L"Продвинутые";
+    wchar_t tab3[] = L"Продвинутые";
+    tie.pszText = tab3;
     TabCtrl_InsertItem(hTabControl, 2, &tie);
 }
 
@@ -502,15 +505,16 @@ void CreateTabContent(HWND hwnd) {
                                     WS_CHILD | BS_AUTOCHECKBOX, tabX, tabY + 100, 200, 20, hwnd, 
                                     (HMENU)IDC_CHK_LIST_FORMATS, NULL, NULL);
     
-    CreateWindowW(L"STATIC", L"Proxy URL:", WS_CHILD, tabX + 280, tabY, 100, 18, hwnd, NULL, NULL, NULL);
+    // Метки и поля справа
+    HWND hLblProxy = CreateWindowW(L"STATIC", L"Proxy URL:", WS_CHILD, tabX + 280, tabY, 100, 18, hwnd, NULL, NULL, NULL);
     hEditProxy = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                  tabX + 280, tabY + 20, 250, 22, hwnd, NULL, NULL, NULL);
     
-    CreateWindowW(L"STATIC", L"Ожидание видео (сек):", WS_CHILD, tabX + 280, tabY + 50, 150, 18, hwnd, NULL, NULL, NULL);
+    HWND hLblWait = CreateWindowW(L"STATIC", L"Ожидание видео (сек):", WS_CHILD, tabX + 280, tabY + 50, 150, 18, hwnd, NULL, NULL, NULL);
     hEditWaitForVideo = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                         tabX + 280, tabY + 70, 250, 22, hwnd, NULL, NULL, NULL);
     
-    CreateWindowW(L"STATIC", L"Секции для загрузки:", WS_CHILD, tabX + 280, tabY + 100, 150, 18, hwnd, NULL, NULL, NULL);
+    HWND hLblSections = CreateWindowW(L"STATIC", L"Секции для загрузки:", WS_CHILD, tabX + 280, tabY + 100, 150, 18, hwnd, NULL, NULL, NULL);
     hEditDownloadSections = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                             tabX + 280, tabY + 120, 250, 22, hwnd, NULL, NULL, NULL);
     
@@ -539,35 +543,35 @@ void CreateTabContent(HWND hwnd) {
                                      WS_CHILD | BS_AUTOCHECKBOX, tabX, tabY + 125, 280, 20, hwnd, 
                                      (HMENU)IDC_CHK_CHECK_FORMATS, NULL, NULL);
     
-    CreateWindowW(L"STATIC", L"Конвертировать субтитры:", WS_CHILD, tabX + 300, tabY, 150, 18, hwnd, NULL, NULL, NULL);
+    HWND hLblConvSubs = CreateWindowW(L"STATIC", L"Конвертировать субтитры:", WS_CHILD, tabX + 300, tabY, 150, 18, hwnd, NULL, NULL, NULL);
     hEditConvertSubs = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                        tabX + 300, tabY + 20, 220, 22, hwnd, NULL, NULL, NULL);
-    CreateWindowW(L"STATIC", L"(srt, ass, vtt)", WS_CHILD, tabX + 300, tabY + 44, 150, 18, hwnd, NULL, NULL, NULL);
+    HWND hLblConvSubsHint = CreateWindowW(L"STATIC", L"(srt, ass, vtt)", WS_CHILD, tabX + 300, tabY + 44, 150, 18, hwnd, NULL, NULL, NULL);
     
-    CreateWindowW(L"STATIC", L"Конвертировать превью:", WS_CHILD, tabX + 300, tabY + 70, 150, 18, hwnd, NULL, NULL, NULL);
+    HWND hLblConvThumb = CreateWindowW(L"STATIC", L"Конвертировать превью:", WS_CHILD, tabX + 300, tabY + 70, 150, 18, hwnd, NULL, NULL, NULL);
     hEditConvertThumbnails = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                              tabX + 300, tabY + 90, 220, 22, hwnd, NULL, NULL, NULL);
-    CreateWindowW(L"STATIC", L"(jpg, png, webp)", WS_CHILD, tabX + 300, tabY + 114, 150, 18, hwnd, NULL, NULL, NULL);
+    HWND hLblConvThumbHint = CreateWindowW(L"STATIC", L"(jpg, png, webp)", WS_CHILD, tabX + 300, tabY + 114, 150, 18, hwnd, NULL, NULL, NULL);
     
     // === ВКЛАДКА 3: Продвинутые ===
-    CreateWindowW(L"STATIC", L"Формат слияния:", WS_CHILD, tabX, tabY, 120, 18, hwnd, NULL, NULL, NULL);
+    HWND hLblMerge = CreateWindowW(L"STATIC", L"Формат слияния:", WS_CHILD, tabX, tabY, 120, 18, hwnd, NULL, NULL, NULL);
     hEditMergeFormat = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                        tabX, tabY + 20, 250, 22, hwnd, NULL, NULL, NULL);
-    CreateWindowW(L"STATIC", L"(mp4, mkv, webm...)", WS_CHILD, tabX, tabY + 44, 150, 18, hwnd, NULL, NULL, NULL);
+    HWND hLblMergeHint = CreateWindowW(L"STATIC", L"(mp4, mkv, webm...)", WS_CHILD, tabX, tabY + 44, 150, 18, hwnd, NULL, NULL, NULL);
     
-    CreateWindowW(L"STATIC", L"Сортировка форматов (-S):", WS_CHILD, tabX, tabY + 70, 180, 18, hwnd, NULL, NULL, NULL);
+    HWND hLblSort = CreateWindowW(L"STATIC", L"Сортировка форматов (-S):", WS_CHILD, tabX, tabY + 70, 180, 18, hwnd, NULL, NULL, NULL);
     hEditFormatSort = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                       tabX, tabY + 90, 250, 22, hwnd, NULL, NULL, NULL);
     
-    CreateWindowW(L"STATIC", L"Extractor Args:", WS_CHILD, tabX + 280, tabY, 120, 18, hwnd, NULL, NULL, NULL);
+    HWND hLblExtractor = CreateWindowW(L"STATIC", L"Extractor Args:", WS_CHILD, tabX + 280, tabY, 120, 18, hwnd, NULL, NULL, NULL);
     hEditExtractorArgs = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                          tabX + 280, tabY + 20, 250, 22, hwnd, NULL, NULL, NULL);
     
-    CreateWindowW(L"STATIC", L"Заголовки (Headers):", WS_CHILD, tabX + 280, tabY + 50, 150, 18, hwnd, NULL, NULL, NULL);
+    HWND hLblHeaders = CreateWindowW(L"STATIC", L"Заголовки (Headers):", WS_CHILD, tabX + 280, tabY + 50, 150, 18, hwnd, NULL, NULL, NULL);
     hEditAddHeaders = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                                       tabX + 280, tabY + 70, 250, 22, hwnd, NULL, NULL, NULL);
     
-    CreateWindowW(L"STATIC", L"Cookies файл:", WS_CHILD, tabX, tabY + 120, 100, 18, hwnd, NULL, NULL, NULL);
+    HWND hLblCookies = CreateWindowW(L"STATIC", L"Cookies файл:", WS_CHILD, tabX, tabY + 120, 100, 18, hwnd, NULL, NULL, NULL);
     hEditCookiesFile = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL | ES_READONLY,
                                        tabX + 110, tabY + 120, 280, 22, hwnd, NULL, NULL, NULL);
     hBtnBrowseCookies = CreateWindowW(L"BUTTON", L"...", WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
@@ -577,7 +581,7 @@ void CreateTabContent(HWND hwnd) {
                                 WS_CHILD | BS_AUTOCHECKBOX, tabX + 280, tabY + 100, 250, 20, hwnd, 
                                 (HMENU)IDC_CHK_NO_CACHE, NULL, NULL);
     
-    // Остальные поля
+    // Остальные скрытые поля
     hEditConfigLocations = CreateWindowW(L"EDIT", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
     hEditDownloader = CreateWindowW(L"EDIT", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
     hEditDownloaderArgs = CreateWindowW(L"EDIT", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
@@ -588,7 +592,7 @@ void CreateTabContent(HWND hwnd) {
     hEditRemoveChapters = CreateWindowW(L"EDIT", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
     hChkForceKeyframes = CreateWindowW(L"BUTTON", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
     
-    // Установка шрифта для всех контролов
+    // Установка шрифта
     EnumChildWindows(hwnd, [](HWND hwndChild, LPARAM lParam) -> BOOL {
         if (hwndChild != hLogEdit) {
             SendMessage(hwndChild, WM_SETFONT, (WPARAM)lParam, TRUE);
@@ -697,13 +701,14 @@ void SwitchTab(int tabIndex) {
                         shouldShow = true;
                     }
                 } else if (tabIndex == 1) {
-                    if (wcsstr(text, L"Конвертировать") || wcsstr(text, L"srt") || wcsstr(text, L"jpg")) {
+                    if (wcsstr(text, L"Конвертировать") || wcsstr(text, L"srt") || wcsstr(text, L"jpg") ||
+                        wcsstr(text, L"png") || wcsstr(text, L"ass") || wcsstr(text, L"vtt") || wcsstr(text, L"webp")) {
                         shouldShow = true;
                     }
                 } else if (tabIndex == 2) {
                     if (wcsstr(text, L"Формат") || wcsstr(text, L"Сортировка") || wcsstr(text, L"Extractor") || 
                         wcsstr(text, L"Заголовки") || wcsstr(text, L"Cookies") || wcsstr(text, L"mp4") || 
-                        wcsstr(text, L"mkv")) {
+                        wcsstr(text, L"mkv") || wcsstr(text, L"webm")) {
                         shouldShow = true;
                     }
                 }
@@ -1020,11 +1025,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
-    // Установка UTF-8 кодовой страницы для консоли
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
     
-    // Инициализация Common Controls
     INITCOMMONCONTROLSEX icex;
     icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
     icex.dwICC = ICC_PROGRESS_CLASS | ICC_TAB_CLASSES;
@@ -1044,11 +1047,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     
     RegisterClassW(&wc);
     
+    // Добавлен WS_THICKFRAME и WS_MAXIMIZEBOX для изменения размера
     hMainWindow = CreateWindowExW(
         0,
         CLASS_NAME,
         L"yt-dlp GUI - Загрузчик видео",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        WS_OVERLAPPEDWINDOW, // Вместо WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
         CW_USEDEFAULT, CW_USEDEFAULT, 600, normalHeight,
         NULL, NULL, hInstance, NULL
     );
