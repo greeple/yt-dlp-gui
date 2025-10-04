@@ -3,6 +3,8 @@
 #include <shlobj.h>
 #include <string>
 #include <thread>
+#include <locale>
+#include <codecvt>
 #include "resource.h"
 
 #pragma comment(lib, "comctl32.lib")
@@ -14,16 +16,41 @@ HWND hUrlEdit, hOutputEdit, hQualityCombo, hFormatCombo;
 HWND hDownloadBtn, hBrowseBtn, hProgressBar, hStatusText;
 bool isDownloading = false;
 
-// Функция для выполнения команды и перехвата вывода
-std::string ExecuteCommand(const std::string& command) {
+// Конвертер UTF-8 <-> Wide String
+std::wstring Utf8ToWide(const std::string& str) {
+    if (str.empty()) return std::wstring();
+    int size = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, NULL, 0);
+    std::wstring result(size, 0);
+    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, &result[0], size);
+    return result;
+}
+
+std::string WideToUtf8(const std::wstring& wstr) {
+    if (wstr.empty()) return std::string();
+    int size = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, NULL, 0, NULL, NULL);
+    std::string result(size, 0);
+    WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, &result[0], size, NULL, NULL);
+    return result;
+}
+
+std::string WideToAnsi(const std::wstring& wstr) {
+    if (wstr.empty()) return std::string();
+    int size = WideCharToMultiByte(CP_ACP, 0, wstr.c_str(), -1, NULL, 0, NULL, NULL);
+    std::string result(size, 0);
+    WideCharToMultiByte(CP_ACP, 0, wstr.c_str(), -1, &result[0], size, NULL, NULL);
+    return result;
+}
+
+// Функция для выполнения команды
+std::wstring ExecuteCommand(const std::wstring& command) {
     HANDLE hReadPipe, hWritePipe;
     SECURITY_ATTRIBUTES sa = { sizeof(SECURITY_ATTRIBUTES), NULL, TRUE };
     
     if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
-        return "Error creating pipe";
+        return L"Ошибка создания канала";
     }
     
-    STARTUPINFOA si = { sizeof(STARTUPINFOA) };
+    STARTUPINFOW si = { sizeof(STARTUPINFOW) };
     si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
     si.hStdOutput = hWritePipe;
     si.hStdError = hWritePipe;
@@ -31,11 +58,14 @@ std::string ExecuteCommand(const std::string& command) {
     
     PROCESS_INFORMATION pi;
     
-    if (!CreateProcessA(NULL, (LPSTR)command.c_str(), NULL, NULL, TRUE, 
+    // Создаем изменяемую копию команды
+    std::wstring cmdCopy = command;
+    
+    if (!CreateProcessW(NULL, &cmdCopy[0], NULL, NULL, TRUE, 
                         CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
         CloseHandle(hReadPipe);
         CloseHandle(hWritePipe);
-        return "Error starting process";
+        return L"Ошибка запуска процесса";
     }
     
     CloseHandle(hWritePipe);
@@ -48,8 +78,9 @@ std::string ExecuteCommand(const std::string& command) {
         buffer[bytesRead] = '\0';
         output += buffer;
         
-        // Обновление статуса в GUI
-        SendMessageA(hStatusText, WM_SETTEXT, 0, (LPARAM)buffer);
+        // Конвертируем в UTF-8 для отображения
+        std::wstring status = Utf8ToWide(output.substr(output.length() > 100 ? output.length() - 100 : 0));
+        SendMessageW(hStatusText, WM_SETTEXT, 0, (LPARAM)status.c_str());
     }
     
     WaitForSingleObject(pi.hProcess, INFINITE);
@@ -58,85 +89,85 @@ std::string ExecuteCommand(const std::string& command) {
     CloseHandle(pi.hThread);
     CloseHandle(hReadPipe);
     
-    return output;
+    return Utf8ToWide(output);
 }
 
 // Поток загрузки
 void DownloadThread() {
-    char url[1024], outputPath[MAX_PATH];
-    GetWindowTextA(hUrlEdit, url, sizeof(url));
-    GetWindowTextA(hOutputEdit, outputPath, sizeof(outputPath));
+    wchar_t url[1024], outputPath[MAX_PATH];
+    GetWindowTextW(hUrlEdit, url, 1024);
+    GetWindowTextW(hOutputEdit, outputPath, MAX_PATH);
     
-    if (strlen(url) == 0) {
-        MessageBoxA(hMainWindow, "Введите URL!", "Ошибка", MB_ICONERROR);
+    if (wcslen(url) == 0) {
+        MessageBoxW(hMainWindow, L"Введите URL!", L"Ошибка", MB_ICONERROR);
         isDownloading = false;
         EnableWindow(hDownloadBtn, TRUE);
-        SetWindowTextA(hDownloadBtn, "Скачать");
+        SetWindowTextW(hDownloadBtn, L"Скачать");
         return;
     }
     
     int qualityIdx = SendMessage(hQualityCombo, CB_GETCURSEL, 0, 0);
     int formatIdx = SendMessage(hFormatCombo, CB_GETCURSEL, 0, 0);
     
-    std::string command = "yt-dlp ";
+    std::wstring command = L"yt-dlp ";
     
     // Формат
     if (formatIdx == 1) { // Только аудио
-        command += "-x --audio-format mp3 ";
+        command += L"-x --audio-format mp3 ";
     } else if (formatIdx == 2) { // Только видео
-        command += "-f \"bv*\" ";
+        command += L"-f \"bv*\" ";
     }
     
     // Качество
     switch (qualityIdx) {
-        case 0: command += "-f \"bv*[height<=2160]+ba/b[height<=2160]\" "; break; // 4K
-        case 1: command += "-f \"bv*[height<=1440]+ba/b[height<=1440]\" "; break; // 1440p
-        case 2: command += "-f \"bv*[height<=1080]+ba/b[height<=1080]\" "; break; // 1080p
-        case 3: command += "-f \"bv*[height<=720]+ba/b[height<=720]\" "; break;  // 720p
-        case 4: command += "-f \"bv*[height<=480]+ba/b[height<=480]\" "; break;  // 480p
-        case 5: break; // Лучшее качество (по умолчанию)
+        case 0: command += L"-f \"bv*[height<=2160]+ba/b[height<=2160]\" "; break; // 4K
+        case 1: command += L"-f \"bv*[height<=1440]+ba/b[height<=1440]\" "; break; // 1440p
+        case 2: command += L"-f \"bv*[height<=1080]+ba/b[height<=1080]\" "; break; // 1080p
+        case 3: command += L"-f \"bv*[height<=720]+ba/b[height<=720]\" "; break;  // 720p
+        case 4: command += L"-f \"bv*[height<=480]+ba/b[height<=480]\" "; break;  // 480p
+        case 5: break; // Лучшее качество
     }
     
     // Путь сохранения
-    if (strlen(outputPath) > 0) {
-        command += "-o \"" + std::string(outputPath) + "/%(title)s.%(ext)s\" ";
+    if (wcslen(outputPath) > 0) {
+        command += L"-o \"" + std::wstring(outputPath) + L"/%(title)s.%(ext)s\" ";
     }
     
-    command += "--newline --progress ";
-    command += "\"" + std::string(url) + "\"";
+    command += L"--newline --progress ";
+    command += L"\"" + std::wstring(url) + L"\"";
     
     SendMessage(hProgressBar, PBM_SETMARQUEE, TRUE, 0);
-    SendMessageA(hStatusText, WM_SETTEXT, 0, (LPARAM)"Загрузка...");
+    SendMessageW(hStatusText, WM_SETTEXT, 0, (LPARAM)L"Загрузка...");
     
-    std::string result = ExecuteCommand(command);
+    std::wstring result = ExecuteCommand(command);
     
     SendMessage(hProgressBar, PBM_SETMARQUEE, FALSE, 0);
     
-    if (result.find("ERROR") != std::string::npos || result.find("Error") != std::string::npos) {
-        MessageBoxA(hMainWindow, "Ошибка загрузки! Проверьте консоль.", "Ошибка", MB_ICONERROR);
-        SendMessageA(hStatusText, WM_SETTEXT, 0, (LPARAM)"Ошибка!");
+    if (result.find(L"ERROR") != std::wstring::npos || result.find(L"Error") != std::wstring::npos) {
+        MessageBoxW(hMainWindow, L"Ошибка загрузки! Проверьте вывод программы.", L"Ошибка", MB_ICONERROR);
+        SendMessageW(hStatusText, WM_SETTEXT, 0, (LPARAM)L"Ошибка!");
     } else {
-        MessageBoxA(hMainWindow, "Загрузка завершена!", "Успех", MB_ICONINFORMATION);
-        SendMessageA(hStatusText, WM_SETTEXT, 0, (LPARAM)"Готово!");
+        MessageBoxW(hMainWindow, L"Загрузка завершена!", L"Успех", MB_ICONINFORMATION);
+        SendMessageW(hStatusText, WM_SETTEXT, 0, (LPARAM)L"Готово!");
     }
     
     isDownloading = false;
     EnableWindow(hDownloadBtn, TRUE);
-    SetWindowTextA(hDownloadBtn, "Скачать");
+    SetWindowTextW(hDownloadBtn, L"Скачать");
 }
 
 // Обработчик выбора папки
 void BrowseFolder() {
-    BROWSEINFOA bi = { 0 };
+    BROWSEINFOW bi = { 0 };
     bi.hwndOwner = hMainWindow;
-    bi.lpszTitle = "Выберите папку для сохранения";
+    bi.lpszTitle = L"Выберите папку для сохранения";
     bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
     
-    LPITEMIDLIST pidl = SHBrowseForFolderA(&bi);
+    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
     if (pidl != NULL) {
-        char path[MAX_PATH];
-        if (SHGetPathFromIDListA(pidl, path)) {
-            SetWindowTextA(hOutputEdit, path);
+        wchar_t path[MAX_PATH];
+        if (SHGetPathFromIDListW(pidl, path)) {
+            SetWindowTextW(hOutputEdit, path);
         }
         CoTaskMemFree(pidl);
     }
@@ -148,59 +179,59 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         case WM_CREATE:
         {
             // URL
-            CreateWindowA("STATIC", "URL видео:", WS_VISIBLE | WS_CHILD,
+            CreateWindowW(L"STATIC", L"URL видео:", WS_VISIBLE | WS_CHILD,
                          10, 10, 100, 20, hwnd, NULL, NULL, NULL);
-            hUrlEdit = CreateWindowA("EDIT", "", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
+            hUrlEdit = CreateWindowW(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
                                     10, 35, 560, 25, hwnd, NULL, NULL, NULL);
             
             // Путь сохранения
-            CreateWindowA("STATIC", "Папка сохранения:", WS_VISIBLE | WS_CHILD,
+            CreateWindowW(L"STATIC", L"Папка сохранения:", WS_VISIBLE | WS_CHILD,
                          10, 70, 150, 20, hwnd, NULL, NULL, NULL);
-            hOutputEdit = CreateWindowA("EDIT", "", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
+            hOutputEdit = CreateWindowW(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
                                        10, 95, 470, 25, hwnd, NULL, NULL, NULL);
-            hBrowseBtn = CreateWindowA("BUTTON", "Обзор...", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+            hBrowseBtn = CreateWindowW(L"BUTTON", L"Обзор...", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
                                        490, 95, 80, 25, hwnd, (HMENU)IDC_BROWSE, NULL, NULL);
             
             // Качество
-            CreateWindowA("STATIC", "Качество:", WS_VISIBLE | WS_CHILD,
+            CreateWindowW(L"STATIC", L"Качество:", WS_VISIBLE | WS_CHILD,
                          10, 130, 100, 20, hwnd, NULL, NULL, NULL);
-            hQualityCombo = CreateWindowA("COMBOBOX", "", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST,
+            hQualityCombo = CreateWindowW(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST,
                                          10, 155, 200, 200, hwnd, NULL, NULL, NULL);
-            SendMessageA(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)"4K (2160p)");
-            SendMessageA(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)"1440p");
-            SendMessageA(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)"1080p");
-            SendMessageA(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)"720p");
-            SendMessageA(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)"480p");
-            SendMessageA(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)"Лучшее доступное");
+            SendMessageW(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"4K (2160p)");
+            SendMessageW(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"1440p");
+            SendMessageW(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"1080p");
+            SendMessageW(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"720p");
+            SendMessageW(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"480p");
+            SendMessageW(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"Лучшее доступное");
             SendMessage(hQualityCombo, CB_SETCURSEL, 2, 0); // 1080p по умолчанию
             
             // Формат
-            CreateWindowA("STATIC", "Формат:", WS_VISIBLE | WS_CHILD,
+            CreateWindowW(L"STATIC", L"Формат:", WS_VISIBLE | WS_CHILD,
                          230, 130, 100, 20, hwnd, NULL, NULL, NULL);
-            hFormatCombo = CreateWindowA("COMBOBOX", "", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST,
+            hFormatCombo = CreateWindowW(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST,
                                         230, 155, 200, 200, hwnd, NULL, NULL, NULL);
-            SendMessageA(hFormatCombo, CB_ADDSTRING, 0, (LPARAM)"Видео + Аудио");
-            SendMessageA(hFormatCombo, CB_ADDSTRING, 0, (LPARAM)"Только аудио (MP3)");
-            SendMessageA(hFormatCombo, CB_ADDSTRING, 0, (LPARAM)"Только видео");
+            SendMessageW(hFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"Видео + Аудио");
+            SendMessageW(hFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"Только аудио (MP3)");
+            SendMessageW(hFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"Только видео");
             SendMessage(hFormatCombo, CB_SETCURSEL, 0, 0);
             
             // Кнопка загрузки
-            hDownloadBtn = CreateWindowA("BUTTON", "Скачать", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+            hDownloadBtn = CreateWindowW(L"BUTTON", L"Скачать", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
                                         10, 195, 560, 35, hwnd, (HMENU)IDC_DOWNLOAD, NULL, NULL);
             
             // Прогресс бар
-            hProgressBar = CreateWindowExA(0, PROGRESS_CLASSA, NULL,
+            hProgressBar = CreateWindowExW(0, PROGRESS_CLASSW, NULL,
                                           WS_VISIBLE | WS_CHILD | PBS_MARQUEE,
                                           10, 245, 560, 25, hwnd, NULL, NULL, NULL);
             
             // Статус
-            hStatusText = CreateWindowA("STATIC", "Готов к загрузке", WS_VISIBLE | WS_CHILD | SS_CENTER,
+            hStatusText = CreateWindowW(L"STATIC", L"Готов к загрузке", WS_VISIBLE | WS_CHILD | SS_CENTER,
                                        10, 280, 560, 20, hwnd, NULL, NULL, NULL);
             
             // Установка шрифта
-            HFONT hFont = CreateFontA(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            HFONT hFont = CreateFontW(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                      DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                     DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
+                                     DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
             EnumChildWindows(hwnd, [](HWND hwndChild, LPARAM lParam) -> BOOL {
                 SendMessage(hwndChild, WM_SETFONT, (WPARAM)lParam, TRUE);
                 return TRUE;
@@ -214,7 +245,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 if (!isDownloading) {
                     isDownloading = true;
                     EnableWindow(hDownloadBtn, FALSE);
-                    SetWindowTextA(hDownloadBtn, "Загрузка...");
+                    SetWindowTextW(hDownloadBtn, L"Загрузка...");
                     std::thread(DownloadThread).detach();
                 }
             }
@@ -227,10 +258,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             PostQuitMessage(0);
             return 0;
     }
-    return DefWindowProc(hwnd, uMsg, wParam, lParam);
+    return DefWindowProcW(hwnd, uMsg, wParam, lParam);
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
+    // Устанавливаем UTF-8 кодовую страницу
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+    
     // Инициализация Common Controls
     INITCOMMONCONTROLSEX icex;
     icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
@@ -240,9 +275,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     CoInitialize(NULL);
     
     // Регистрация класса окна
-    const char CLASS_NAME[] = "YtDlpGuiClass";
+    const wchar_t CLASS_NAME[] = L"YtDlpGuiClass";
     
-    WNDCLASSA wc = { };
+    WNDCLASSW wc = { };
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = hInstance;
     wc.lpszClassName = CLASS_NAME;
@@ -250,13 +285,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
     
-    RegisterClassA(&wc);
+    RegisterClassW(&wc);
     
     // Создание окна
-    hMainWindow = CreateWindowExA(
+    hMainWindow = CreateWindowExW(
         0,
         CLASS_NAME,
-        "yt-dlp GUI",
+        L"yt-dlp GUI",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         CW_USEDEFAULT, CW_USEDEFAULT, 600, 360,
         NULL, NULL, hInstance, NULL
