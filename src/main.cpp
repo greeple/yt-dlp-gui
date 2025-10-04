@@ -610,6 +610,7 @@ void CreateTabContent(HWND hwnd) {
     }, (LPARAM)hFont);
 }
 
+
 // Переключение вкладок
 void SwitchTab(int tabIndex) {
     // Скрыть все элементы всех вкладок
