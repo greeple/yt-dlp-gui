@@ -700,47 +700,7 @@ void SwitchTab(int tabIndex) {
     }
 }
     
-    // Показать соответствующие метки
-    hChild = GetWindow(hMainWindow, GW_CHILD);
-    while (hChild) {
-        wchar_t className[256];
-        GetClassNameW(hChild, className, 256);
-        if (wcscmp(className, L"STATIC") == 0) {
-            RECT rect;
-            GetWindowRect(hChild, &rect);
-            POINT pt = { rect.left, rect.top };
-            ScreenToClient(hMainWindow, &pt);
-            
-            if (pt.y > 250 && pt.y < 420) {
-                wchar_t text[256];
-                GetWindowTextW(hChild, text, 256);
-                
-                bool shouldShow = false;
-                if (tabIndex == 0) {
-                    if (wcsstr(text, L"Proxy") || wcsstr(text, L"Ожидание") || wcsstr(text, L"Секции")) {
-                        shouldShow = true;
-                    }
-                } else if (tabIndex == 1) {
-                    if (wcsstr(text, L"Конвертировать") || wcsstr(text, L"srt") || wcsstr(text, L"jpg") ||
-                        wcsstr(text, L"png") || wcsstr(text, L"ass") || wcsstr(text, L"vtt") || wcsstr(text, L"webp")) {
-                        shouldShow = true;
-                    }
-                } else if (tabIndex == 2) {
-                    if (wcsstr(text, L"Формат") || wcsstr(text, L"Сортировка") || wcsstr(text, L"Extractor") || 
-                        wcsstr(text, L"Заголовки") || wcsstr(text, L"Cookies") || wcsstr(text, L"mp4") || 
-                        wcsstr(text, L"mkv") || wcsstr(text, L"webm")) {
-                        shouldShow = true;
-                    }
-                }
-                
-                if (shouldShow) {
-                    ShowWindow(hChild, SW_SHOW);
-                }
-            }
-        }
-        hChild = GetWindow(hChild, GW_HWNDNEXT);
-    }
-}
+    
 
 // Обработчик сообщений
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
