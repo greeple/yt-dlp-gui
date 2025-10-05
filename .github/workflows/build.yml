@@ -1,15 +1,18 @@
-name: Build Windows GUI
+name: Build sonn yt-dlp GUI
 
 on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+    - uses: actions/checkout@v3
     
     - name: Setup MinGW
       uses: msys2/setup-msys2@v2
@@ -20,61 +23,28 @@ jobs:
           mingw-w64-x86_64-gcc
           mingw-w64-x86_64-cmake
           mingw-w64-x86_64-ninja
-          make
+          mingw-w64-x86_64-toolchain
     
-    - name: Build application
+    - name: Build
       shell: msys2 {0}
       run: |
         mkdir build
         cd build
         cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release ..
-        ninja
+        cmake --build .
     
-    #- name: Download yt-dlp
-     # shell: pwsh
-     # run: |
-    #    Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "build/yt-dlp.exe"
-    # Copy-Item "build/yt-dlp.exe" "release/"
-    - name: Create release package
+    
+    - name: Create Release Package
       shell: pwsh
       run: |
         New-Item -ItemType Directory -Force -Path release
-        Copy-Item "build/yt-dlp-gui.exe" "release/"
-        
-        # Создаем README
-        @"
-        # yt-dlp GUI
-        
-        ## Использование
-        1. Запустите yt-dlp-gui.exe
-        2. Вставьте URL видео
-        3. Выберите качество и формат
-        4. Нажмите 'Скачать'
-        
-        ## Требования
-        - Windows 7 или новее
-        - yt-dlp.exe должен быть в той же папке или в PATH
-        
-        ## Возможности
-        - Скачивание видео в различных качествах (480p - 4K)
-        - Извлечение только аудио (MP3)
-        - Выбор папки сохранения
-        - Отображение прогресса загрузки
-        "@ | Out-File -FilePath "release/README.txt" -Encoding UTF8
+        Copy-Item build/yt-dlp-gui.exe release/
+        Copy-Item README.md release/ -ErrorAction SilentlyContinue
+        Compress-Archive -Path release/* -DestinationPath yt-dlp-gui-windows.zip
     
-    - name: Upload artifacts
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: yt-dlp-gui-windows
-        path: release/
+        path: yt-dlp-gui-windows.zip
     
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v2
-      with:
-        files: |
-          release/yt-dlp-gui.exe
-          release/yt-dlp.exe
-          release/README.txt
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
