@@ -1,4 +1,4 @@
-name: Build YT-DLP GUI
+name: Build gpt YT-DLP GUI
 
 on:
   workflow_dispatch:
