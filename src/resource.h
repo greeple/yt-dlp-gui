@@ -1,30 +1,50 @@
 #ifndef RESOURCE_H
 #define RESOURCE_H
 
-#define IDC_DOWNLOAD        1001
-#define IDC_BROWSE          1002
-#define IDC_TOGGLE_LOG      1003
-#define IDC_TAB             1004
-#define IDC_PRESET_COMBO    1005
-#define IDC_SAVE_PRESET     1006
-#define IDC_DELETE_PRESET   1007
-#define IDC_BROWSE_BATCH    1008
-#define IDC_BROWSE_COOKIES  1009
-#define IDC_BROWSE_CACHE    1010
+#define IDC_TAB_CONTROL             1001
+#define IDC_TAB_BASIC               1002
+#define IDC_TAB_NETWORK             1003
+#define IDC_TAB_DOWNLOADER          1004
+#define IDC_TAB_PROCESSING          1005
+#define IDC_TAB_ADVANCED            1006
 
-// Checkboxes
-#define IDC_CHK_IGNORE_CONFIG       1100
-#define IDC_CHK_LIVE_FROM_START     1101
-#define IDC_CHK_NO_CACHE            1102
-#define IDC_CHK_SKIP_DOWNLOAD       1103
-#define IDC_CHK_SAVE_JSON           1104
-#define IDC_CHK_LIST_FORMATS        1105
-#define IDC_CHK_CHECK_FORMATS       1106
-#define IDC_CHK_EMBED_SUBS          1107
-#define IDC_CHK_EMBED_THUMBNAIL     1108
-#define IDC_CHK_EMBED_METADATA      1109
-#define IDC_CHK_EMBED_CHAPTERS      1110
-#define IDC_CHK_SPLIT_CHAPTERS      1111
-#define IDC_CHK_FORCE_KEYFRAMES     1112
+#define IDC_URL_EDIT                1010
+#define IDC_SAVEPATH_EDIT           1011
+#define IDC_BROWSE_BTN              1012
+#define IDC_FORMAT_COMBO            1013
+#define IDC_QUALITY_COMBO           1014
 
-#endif
+#define IDC_PROXY_EDIT              1020
+#define IDC_COOKIES_BROWSER_COMBO   1021
+#define IDC_COOKIES_FILE_EDIT       1022
+#define IDC_COOKIES_FILE_BROWSE_BTN 1023
+
+#define IDC_DOWNLOADER_COMBO        1030
+#define IDC_DOWNLOADER_ARGS_EDIT    1031
+
+#define IDC_MERGE_FORMAT_COMBO      1040
+#define IDC_CONVERT_SUBS_COMBO      1041
+#define IDC_CONVERT_THUMBNAILS_COMBO 1042
+#define IDC_EMBED_SUBS_CHECK        1043
+#define IDC_EMBED_THUMBNAIL_CHECK   1044
+#define IDC_EMBED_METADATA_CHECK    1045
+#define IDC_EMBED_CHAPTERS_CHECK    1046
+#define IDC_SPLIT_CHAPTERS_CHECK    1047
+
+#define IDC_IGNORE_CONFIG_CHECK     1050
+#define IDC_LIVE_FROM_START_CHECK   1051
+#define IDC_CHECK_FORMATS_CHECK     1052
+#define IDC_SKIP_DOWNLOAD_CHECK     1053
+#define IDC_SAVE_JSON_CHECK         1054
+#define IDC_LIST_FORMATS_CHECK      1055
+#define IDC_BATCH_FILE_EDIT         1056
+#define IDC_BATCH_FILE_BROWSE_BTN   1057
+#define IDC_OUTPUT_TEMPLATE_EDIT    1058
+#define IDC_REMOVE_CHAPTERS_EDIT    1059
+
+#define IDC_PROGRESS_BAR            1060
+#define IDC_OUTPUT_EDIT             1061
+#define IDC_TOGGLE_OUTPUT_BTN       1062
+#define IDC_DOWNLOAD_BTN            1063
+
+#endif // RESOURCE_H
