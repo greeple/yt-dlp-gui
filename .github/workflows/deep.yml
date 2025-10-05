@@ -1,4 +1,4 @@
-name: Build yt-dlp GUI
+name: Build deep yt-dlp GUI
 
 on:
   push:
