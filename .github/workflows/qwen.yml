@@ -1,4 +1,4 @@
-name: Build qwen yt-dlp GUI
+name: Build qwen yt-dlp GUI (MSVC)
 
 on: [push, pull_request]
 
@@ -8,14 +8,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install MinGW via Chocolatey
-        run: |
-          choco install mingw -y
-          echo "C:\tools\mingw64\bin" >> $GITHUB_PATH
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v2
 
-      - name: Compile with g++
+      - name: Compile with MSVC (cl.exe)
         run: |
-          g++ -std=c++17 -DUNICODE -D_UNICODE -O2 -mwindows -municode -lcomctl32 -o yt-dlp-gui.exe src/main.cpp
+          cl.exe /std:c++17 /EHsc /DUNICODE /D_UNICODE /O2 /link /SUBSYSTEM:WINDOWS /OUT:yt-dlp-gui.exe src\main.cpp comctl32.lib
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
