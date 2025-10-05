@@ -1,7 +1,6 @@
 name: Build qwen yt-dlp GUI
 
-on: 
-  workflow_dispatch:
+on: [push, pull_request]
 
 jobs:
   build-windows:
@@ -9,10 +8,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install MinGW-w64
+      - name: Install MinGW via Chocolatey
         run: |
-          winget install -e --id=Mingw.mingw64
-          echo "C:\Program Files\mingw64\bin" >> $GITHUB_PATH
+          choco install mingw -y
+          echo "C:\tools\mingw64\bin" >> $GITHUB_PATH
 
       - name: Compile with g++
         run: |
