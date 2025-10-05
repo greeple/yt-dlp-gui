@@ -28,7 +28,7 @@ jobs:
     - name: Compile Application
       shell: msys2 {0}
       run: |
-        g++ -o yt-dlp-gui.exe main.cpp resource.rc -mwindows -lcomctl32 -lshell32 -static -std=c++17 -Wl,-subsystem,windows
+        g++ -o yt-dlp-gui.exe main.cpp resource.h -mwindows -lcomctl32 -lshell32 -static -std=c++17 -Wl,-subsystem,windows
 
     # 4. Упаковываем .exe в .zip архив
     # Этот шаг выполняется уже в обычной среде Windows (powershell)
