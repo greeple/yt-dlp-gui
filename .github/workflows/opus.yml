@@ -1,0 +1,81 @@
+name: Build YT-DLP GUI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup MSVC
+      uses: microsoft/setup-msbuild@v1.1
+      
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. -G "Visual Studio 17 2022" -A x64
+      
+    - name: Build
+      run: |
+        cd build
+        cmake --build . --config Release
+        
+        
+    - name: Create Package
+      run: |
+        mkdir package
+        copy build/Release/YTDLPGui.exe package/
+        
+    - name: Create README
+      run: |
+        @"
+        # YT-DLP GUI
+        
+        ## Installation
+        1. Extract all files to a folder
+        2. Run YTDLPGui.exe
+        
+        ## Requirements
+        - Windows 10/11 x64
+        - Visual C++ Redistributable (usually already installed)
+        
+        ## Features
+        - Simple interface for downloading videos
+        - Support for various formats and qualities
+        - Advanced options in tabs
+        - Console output viewer
+        - Settings persistence
+        
+        ## Usage
+        1. Enter video URL
+        2. Select output folder (Desktop by default)
+        3. Choose format and quality
+        4. Click Download
+        
+        ## Notes
+        - yt-dlp.exe must be in the same folder as the GUI
+        - Settings are saved in ytdlp_gui_settings.json
+        "@ | Out-File -FilePath package/README.txt -Encoding UTF8
+      shell: powershell
+        
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: YTDLPGui-Windows-x64
+        path: package/
+        
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          package/YTDLPGui.exe
+          package/README.txt
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
