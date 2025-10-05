@@ -35,7 +35,8 @@ void LoadSettings();
 void SaveSettings();
 std::wstring GetSettingsValue(const std::wstring&, const std::wstring&);
 void SetSettingsValue(const std::wstring&, const std::wstring&, const std::wstring&);
-std.wstring BuildYtDlpCommand();
+// *** ИСПРАВЛЕНИЕ №1: std.wstring -> std::wstring ***
+std::wstring BuildYtDlpCommand();
 
 
 // --- Точка входа ---
@@ -101,7 +102,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                  LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
                  if (pidl != 0) {
                      SHGetPathFromIDListW(pidl, downloadPath);
-                     SetDlgItemTextW(GetDlgItem(hMainWindow, IDC_OUTPUT_PATH_EDIT), 0, downloadPath); // Предполагаем, что есть такой контрол на одной из вкладок
+                     SetDlgItemTextW(hMainWindow, IDC_OUTPUT_PATH_EDIT, downloadPath);
                      CoTaskMemFree(pidl);
                  }
             }
@@ -144,9 +145,10 @@ void CreateTabs(HWND hwnd) {
     TCITEMW tie;
     tie.mask = TCIF_TEXT;
     
-    wchar_t* titles[] = {L"Основные", L"Сеть", L"Вывод", L"Форматы", L"Субтитры", L"Метаданные"};
+    // *** ИСПРАВЛЕНИЕ №2: wchar_t* -> const wchar_t* ***
+    const wchar_t* titles[] = {L"Основные", L"Сеть", L"Вывод", L"Форматы", L"Субтитры", L"Метаданные"};
     for(int i = 0; i < 6; i++) {
-        tie.pszText = titles[i];
+        tie.pszText = (LPWSTR)titles[i]; // (LPWSTR) для совместимости
         TabCtrl_InsertItem(hTabControl, i, &tie);
     }
     
@@ -168,17 +170,17 @@ void OnTabChange(HWND hwnd) {
 // --- Показать/скрыть контент вкладок ---
 void ShowWindowContent(int tabIndex) {
     // Сначала скроем все
-    ShowWindow(GetDlgItem(hwnd, IDC_STATIC_PATH), SW_HIDE);
-    ShowWindow(GetDlgItem(hwnd, IDC_OUTPUT_PATH_EDIT), SW_HIDE);
-    ShowWindow(GetDlgItem(hwnd, IDC_BROWSE_BUTTON), SW_HIDE);
+    ShowWindow(GetDlgItem(hMainWindow, IDC_STATIC_PATH), SW_HIDE);
+    ShowWindow(GetDlgItem(hMainWindow, IDC_OUTPUT_PATH_EDIT), SW_HIDE);
+    ShowWindow(GetDlgItem(hMainWindow, IDC_BROWSE_BUTTON), SW_HIDE);
     // ... и так для всех элементов всех вкладок ...
 
     // Теперь покажем нужные
     switch(tabIndex) {
         case 0: // Основные
-            ShowWindow(GetDlgItem(hwnd, IDC_STATIC_PATH), SW_SHOW);
-            ShowWindow(GetDlgItem(hwnd, IDC_OUTPUT_PATH_EDIT), SW_SHOW);
-            ShowWindow(GetDlgItem(hwnd, IDC_BROWSE_BUTTON), SW_SHOW);
+            ShowWindow(GetDlgItem(hMainWindow, IDC_STATIC_PATH), SW_SHOW);
+            ShowWindow(GetDlgItem(hMainWindow, IDC_OUTPUT_PATH_EDIT), SW_SHOW);
+            ShowWindow(GetDlgItem(hMainWindow, IDC_BROWSE_BUTTON), SW_SHOW);
             break;
         case 1: // Сеть
             // Показать элементы для вкладки "Сеть"
@@ -201,14 +203,14 @@ void ResizeControls(HWND hwnd) {
     MoveWindow(hToggleOutputButton, 10, 75, 150, 25, TRUE);
 
     int outputHeight = isOutputVisible ? 150 : 0;
-    int tabTop = 80;
-    int tabHeight = height - tabTop - (isOutputVisible ? outputHeight + 10 : 0) - 30; // 30 для статус-бара
+    int tabTop = 110;
+    int tabHeight = height - tabTop - (isOutputVisible ? outputHeight + 10 : 0) - 25; // 25 для статус-бара
 
     if (isOutputVisible) {
         MoveWindow(hTabControl, 10, tabTop, width - 20, tabHeight, TRUE);
         MoveWindow(hOutputEdit, 10, tabTop + tabHeight + 5, width - 20, outputHeight, TRUE);
     } else {
-        MoveWindow(hTabControl, 10, tabTop, width - 20, height - tabTop - 30, TRUE);
+        MoveWindow(hTabControl, 10, tabTop, width - 20, height - tabTop - 25, TRUE);
     }
     ShowWindow(hOutputEdit, isOutputVisible ? SW_SHOW : SW_HIDE);
     
@@ -217,9 +219,9 @@ void ResizeControls(HWND hwnd) {
     GetWindowRect(hTabControl, &rcTab);
     MapWindowPoints(HWND_DESKTOP, hwnd, (LPPOINT)&rcTab, 2);
     
+    MoveWindow(GetDlgItem(hwnd, IDC_STATIC_PATH), rcTab.left + 10, rcTab.top + 35, 120, 20, TRUE);
     MoveWindow(GetDlgItem(hwnd, IDC_OUTPUT_PATH_EDIT), rcTab.left + 140, rcTab.top + 35, rcTab.right - rcTab.left - 260, 25, TRUE);
     MoveWindow(GetDlgItem(hwnd, IDC_BROWSE_BUTTON), rcTab.right - 120, rcTab.top + 35, 100, 25, TRUE);
-
 
     SendMessage(hStatus, WM_SIZE, 0, 0);
 }
@@ -243,6 +245,9 @@ void LoadSettings() {
 }
 
 void SaveSettings() {
+    // Получаем текущий путь из поля ввода
+    GetDlgItemTextW(hMainWindow, IDC_OUTPUT_PATH_EDIT, downloadPath, MAX_PATH);
+
     std::wofstream configFile(configFilePath);
     if (configFile.is_open()) {
         configFile << L"DownloadPath=" << downloadPath << std::endl;
@@ -316,26 +321,29 @@ void ReadOutput(HANDLE hPipe, HWND hEdit) {
 
         // Конвертация из OEM (консольной) кодировки в UTF-16
         int wideCharCount = MultiByteToWideChar(CP_OEMCP, 0, fullOutput.c_str(), -1, NULL, 0);
+        if(wideCharCount == 0) continue;
         std::vector<wchar_t> w_buffer(wideCharCount);
         MultiByteToWideChar(CP_OEMCP, 0, fullOutput.c_str(), -1, &w_buffer[0], wideCharCount);
         
         // Обновление текстового поля
         SetWindowTextW(hEdit, &w_buffer[0]);
-        SendMessage(hEdit, EM_SCROLLCARET, 0, 0);
+        SendMessage(hEdit, WM_VSCROLL, SB_BOTTOM, 0);
 
         // Парсинг прогресса
-        std::string line = buffer;
+        std::string line = buffer; // Парсим только последний кусок данных
         size_t pos = line.rfind("[download]");
         if (pos != std::string::npos) {
             size_t percent_pos = line.find('%', pos);
             if (percent_pos != std::string::npos) {
-                size_t start_pos = line.rfind(' ', percent_pos) + 1;
-                std::string percent_str = line.substr(start_pos, percent_pos - start_pos);
-                try {
-                    int progress = std::stoi(percent_str);
-                    SendMessage(hProgressBar, PBM_SETPOS, progress, 0);
-                } catch (...) {
-                    // Ошибка парсинга
+                size_t start_pos = line.rfind(' ', percent_pos);
+                if(start_pos != std::string::npos) {
+                    std::string percent_str = line.substr(start_pos + 1, percent_pos - (start_pos + 1));
+                    try {
+                        int progress = (int)std::stod(percent_str);
+                        SendMessage(hProgressBar, PBM_SETPOS, progress, 0);
+                    } catch (...) {
+                        // Ошибка парсинга
+                    }
                 }
             }
         }
