@@ -1,5 +1,7 @@
 name: Build C++ Application
 
+# Этот workflow будет запускаться при каждом пуше в ветку 'main'
+# А также его можно запустить вручную из вкладки Actions
 on:
   push:
     branches: [ "main" ]
@@ -7,31 +9,39 @@ on:
 
 jobs:
   build:
+    # Запускаем на последней доступной версии Windows
     runs-on: windows-latest
 
     steps:
+    # 1. Скачиваем код из репозитория
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up MinGW
+    # 2. Устанавливаем 64-битный компилятор MinGW-w64
+    # Мы убрали проблемный параметр для статической линковки, 
+    # так как он больше не нужен и вызывает ошибку.
+    - name: Set up MinGW-w64
       uses: egor-tensin/setup-mingw@v2
       with:
         platform: x64
 
-    - name: Compile resources
-      run: windres resource.rc -O coff -o resource.o
+    # 3. Компилируем приложение
+    # g++ может компилировать файлы ресурсов (.rc) напрямую,
+    # поэтому отдельный шаг с 'windres' не нужен. Это делает сборку проще.
+    - name: Compile Application
+      run: g++ -o yt-dlp-gui.exe main.cpp resource.rc -mwindows -lcomctl32 -lshell32 -static -std=c++17 -Wl,-subsystem,windows
 
-    - name: Compile C++ code
-      run: g++ -o yt-dlp-gui.exe main.cpp resource.o -mwindows -lcomctl32 -lshell32 -static -std=c++17 -Wl,-subsystem,windows
+    # 4. Упаковываем готовый .exe файл в .zip архив для релиза
+    - name: Create Release Artifact
+      run: Compress-Archive -Path yt-dlp-gui.exe -DestinationPath yt-dlp-gui.zip
 
-    - name: Create Release Artifacts
-      shell: powershell
-      run: |
-        Compress-Archive -Path yt-dlp-gui.exe -DestinationPath yt-dlp-gui.zip
-        
-    - name: Create Release and Upload
+    # 5. Создаём или обновляем релиз на GitHub
+    # Этот шаг будет автоматически создавать релиз с тегом 'latest',
+    # перезаписывая его при каждой новой сборке.
+    - name: Create or Update Release
       uses: softprops/action-gh-release@v2
       with:
         files: yt-dlp-gui.zip
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        tag_name: latest
+        prerelease: false
+        make_latest: true
