@@ -1,4 +1,4 @@
-name: Build yt-dlp GUI
+name: Build qwen yt-dlp GUI
 
 on: [push, pull_request]
 
