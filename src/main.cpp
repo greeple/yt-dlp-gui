@@ -2,6 +2,7 @@
 #define UNICODE
 #define _UNICODE
 #define WIN32_LEAN_AND_MEAN
+#define _WIN32_WINNT 0x0601
 
 #include <windows.h>
 #include <commctrl.h>
@@ -13,7 +14,6 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
-#include <cwchar>
 
 #pragma comment(linker,"\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #pragma comment(lib, "comctl32.lib")
@@ -30,20 +30,17 @@ HWND g_hShowLogBtn = nullptr;
 bool g_logVisible = false;
 
 // Элементы вкладок
-// Tab 0: Основное
 HWND g_hUrlEdit = nullptr;
 HWND g_hSavePathEdit = nullptr;
 HWND g_hBrowseBtn = nullptr;
 HWND g_hDownloadBtn = nullptr;
 
-// Tab 1: Форматы и вывод
 HWND g_hOutputTemplateEdit = nullptr;
 HWND g_hMergeFormatCombo = nullptr;
 HWND g_hListFormatsCheck = nullptr;
 HWND g_hSkipDownloadCheck = nullptr;
 HWND g_hWriteJsonCheck = nullptr;
 
-// Tab 2: Субтитры и метаданные
 HWND g_hEmbedSubsCheck = nullptr;
 HWND g_hEmbedThumbCheck = nullptr;
 HWND g_hEmbedMetaCheck = nullptr;
@@ -51,13 +48,11 @@ HWND g_hEmbedChaptersCheck = nullptr;
 HWND g_hConvertSubsCombo = nullptr;
 HWND g_hConvertThumbsCombo = nullptr;
 
-// Tab 3: Прокси и загрузчики
 HWND g_hProxyEdit = nullptr;
 HWND g_hDownloaderCombo = nullptr;
 HWND g_hDownloaderArgsEdit = nullptr;
 HWND g_hCookiesBrowserCombo = nullptr;
 
-// Tab 4: Продвинутое
 HWND g_hIgnoreConfigCheck = nullptr;
 HWND g_hConfigLocationsEdit = nullptr;
 HWND g_hLiveFromStartCheck = nullptr;
@@ -66,7 +61,6 @@ HWND g_hBatchBrowseBtn = nullptr;
 HWND g_hNoCacheDirCheck = nullptr;
 HWND g_hCacheDirEdit = nullptr;
 
-// Настройки
 struct Settings {
     std::wstring savePath;
     std::wstring url;
@@ -202,7 +196,6 @@ void AppendLog(const std::wstring& text) {
     SendMessageW(g_hLogEdit, EM_SCROLLCARET, 0, 0);
 }
 
-// Генерация команды yt-dlp
 std::wstring BuildYtDlpCommand() {
     std::wstring cmd = L"yt-dlp.exe";
 
@@ -269,12 +262,10 @@ std::wstring BuildYtDlpCommand() {
         cmd += L"\"";
     }
 
-    // Папка сохранения
     cmd += L" --paths \"";
     cmd += g_settings.savePath;
     cmd += L"\"";
 
-    // URL или batch
     if (g_settings.batchFile.empty()) {
         wchar_t urlBuf[2048] = {0};
         GetWindowTextW(g_hUrlEdit, urlBuf, 2048);
@@ -336,12 +327,12 @@ DWORD WINAPI RunYtDlpThread(LPVOID) {
 }
 
 // ======================
-// Создание элементов вкладок
+// Создание вкладок
 // ======================
 
 void CreateTab0Controls(HWND parent) {
     int y = 20;
-    CreateWindowW(L"STATIC", L"URL видео или плейлиста:", WS_CHILD | WS_VISIBLE, 10, y, 200, 20, parent, nullptr, nullptr, nullptr);
+    CreateWindowW(L"STATIC", L"URL видео или плейлиста:", WS_CHILD | WS_VISIBLE, 10, y, 250, 20, parent, nullptr, nullptr, nullptr);
     y += 25;
     g_hUrlEdit = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
                                10, y, 500, 24, parent, nullptr, nullptr, nullptr);
@@ -356,7 +347,7 @@ void CreateTab0Controls(HWND parent) {
     y += 35;
 
     g_hDownloadBtn = CreateWindowW(L"BUTTON", L"Скачать", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
-                                   10, y, 120, 30, parent, (HMENU)100, nullptr, nullptr);
+                                   10, y, 120, 30, parent, (HMENU)200, nullptr, nullptr);
 }
 
 void CreateTab1Controls(HWND parent) {
@@ -380,28 +371,28 @@ void CreateTab1Controls(HWND parent) {
     y += 35;
 
     g_hListFormatsCheck = CreateWindowW(L"BUTTON", L"Показать доступные форматы (--list-formats)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                                        10, y, 350, 20, parent, nullptr, nullptr, nullptr);
+                                        10, y, 400, 20, parent, nullptr, nullptr, nullptr);
     y += 25;
     g_hSkipDownloadCheck = CreateWindowW(L"BUTTON", L"Только анализировать (--skip-download)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                                         10, y, 350, 20, parent, nullptr, nullptr, nullptr);
+                                         10, y, 400, 20, parent, nullptr, nullptr, nullptr);
     y += 25;
     g_hWriteJsonCheck = CreateWindowW(L"BUTTON", L"Сохранить метаданные в JSON (-J)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                                      10, y, 350, 20, parent, nullptr, nullptr, nullptr);
+                                      10, y, 400, 20, parent, nullptr, nullptr, nullptr);
 }
 
 void CreateTab2Controls(HWND parent) {
     int y = 20;
     g_hEmbedSubsCheck = CreateWindowW(L"BUTTON", L"Встроить субтитры (--embed-subs)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                                      10, y, 300, 20, parent, nullptr, nullptr, nullptr);
+                                      10, y, 350, 20, parent, nullptr, nullptr, nullptr);
     y += 25;
     g_hEmbedThumbCheck = CreateWindowW(L"BUTTON", L"Встроить превью (--embed-thumbnail)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                                       10, y, 300, 20, parent, nullptr, nullptr, nullptr);
+                                       10, y, 350, 20, parent, nullptr, nullptr, nullptr);
     y += 25;
     g_hEmbedMetaCheck = CreateWindowW(L"BUTTON", L"Встроить метаданные (--embed-metadata)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                                      10, y, 300, 20, parent, nullptr, nullptr, nullptr);
+                                      10, y, 350, 20, parent, nullptr, nullptr, nullptr);
     y += 25;
     g_hEmbedChaptersCheck = CreateWindowW(L"BUTTON", L"Встроить главы (--embed-chapters)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                                          10, y, 300, 20, parent, nullptr, nullptr, nullptr);
+                                          10, y, 350, 20, parent, nullptr, nullptr, nullptr);
     y += 35;
 
     CreateWindowW(L"STATIC", L"Конвертировать субтитры:", WS_CHILD | WS_VISIBLE, 10, y, 200, 20, parent, nullptr, nullptr, nullptr);
@@ -466,7 +457,7 @@ void CreateTab3Controls(HWND parent) {
 void CreateTab4Controls(HWND parent) {
     int y = 20;
     g_hIgnoreConfigCheck = CreateWindowW(L"BUTTON", L"Игнорировать конфиг (--ignore-config)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                                         10, y, 300, 20, parent, nullptr, nullptr, nullptr);
+                                         10, y, 350, 20, parent, nullptr, nullptr, nullptr);
     y += 25;
     CreateWindowW(L"STATIC", L"Путь к конфигу (--config-locations):", WS_CHILD | WS_VISIBLE, 10, y, 250, 20, parent, nullptr, nullptr, nullptr);
     y += 25;
@@ -496,7 +487,7 @@ void CreateTab4Controls(HWND parent) {
 }
 
 // ======================
-// Обработка сообщений
+// WndProc
 // ======================
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -535,11 +526,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
             LoadSettings();
             SetWindowTextW(g_hSavePathEdit, g_settings.savePath.c_str());
-            CheckDlgButton(hWnd, 1000, BST_UNCHECKED); // placeholder
 
-            // Установка значений из настроек
             SetWindowTextW(g_hOutputTemplateEdit, g_settings.outputTemplate.c_str());
             SendMessageW(g_hMergeFormatCombo, CB_SELECTSTRING, -1, (LPARAM)g_settings.mergeFormat.c_str());
+            CheckDlgButton(hWnd, 1000, BST_UNCHECKED); // dummy
+
             CheckDlgButton(g_hListFormatsCheck, g_settings.listFormats ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(g_hSkipDownloadCheck, g_settings.skipDownload ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(g_hWriteJsonCheck, g_settings.writeJson ? BST_CHECKED : BST_UNCHECKED);
@@ -567,7 +558,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             break;
         }
         case WM_NOTIFY: {
-            if (LOWORD(wParam) == 0 && ((LPNMHDR)lParam)->code == TCN_SELCHANGE) {
+            if (((LPNMHDR)lParam)->code == TCN_SELCHANGE) {
                 int sel = TabCtrl_GetCurSel(g_hTab);
                 for (int i = 0; i < 5; ++i) {
                     ShowWindow(hTabPages[i], i == sel ? SW_SHOW : SW_HIDE);
@@ -577,13 +568,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         case WM_COMMAND: {
             WORD id = LOWORD(wParam);
-            if (id == 100) { // Показать/скрыть лог
+            if (id == 100) {
                 g_logVisible = !g_logVisible;
                 ShowWindow(g_hLogEdit, g_logVisible ? SW_SHOW : SW_HIDE);
                 SetWindowTextW(g_hShowLogBtn, g_logVisible ? L"Скрыть лог" : L"Показать лог");
                 SendMessageW(hWnd, WM_SIZE, 0, 0);
             }
-            else if (id == 101) { // Обзор папки сохранения
+            else if (id == 101) {
                 BROWSEINFOW bi = {0};
                 bi.hwndOwner = hWnd;
                 bi.pszDisplayName = nullptr;
@@ -599,7 +590,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     CoTaskMemFree(pidl);
                 }
             }
-            else if (id == 102) { // Обзор batch-файла
+            else if (id == 102) {
                 OPENFILENAMEW ofn = {0};
                 wchar_t file[MAX_PATH] = {0};
                 ofn.lStructSize = sizeof(ofn);
@@ -614,26 +605,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     SetWindowTextW(g_hBatchFileEdit, file);
                 }
             }
-            else if (id == 100) { // Кнопка "Скачать" — на самом деле ID 100, но выше уже занята
-                // Исправим: кнопка "Скачать" — ID 200
-            }
-            else if (HIWORD(wParam) == BN_CLICKED && (HWND)lParam == g_hDownloadBtn) {
-                // Считываем текущие значения
+            else if (id == 200) {
                 wchar_t buf[2048];
                 GetWindowTextW(g_hSavePathEdit, buf, 2048);
                 g_settings.savePath = buf;
                 GetWindowTextW(g_hOutputTemplateEdit, buf, 2048);
                 g_settings.outputTemplate = buf;
-                g_settings.listFormats = IsDlgButtonChecked(g_hListFormatsCheck) == BST_CHECKED;
-                g_settings.skipDownload = IsDlgButtonChecked(g_hSkipDownloadCheck) == BST_CHECKED;
-                g_settings.writeJson = IsDlgButtonChecked(g_hWriteJsonCheck) == BST_CHECKED;
-                g_settings.embedSubs = IsDlgButtonChecked(g_hEmbedSubsCheck) == BST_CHECKED;
-                g_settings.embedThumbnail = IsDlgButtonChecked(g_hEmbedThumbCheck) == BST_CHECKED;
-                g_settings.embedMetadata = IsDlgButtonChecked(g_hEmbedMetaCheck) == BST_CHECKED;
-                g_settings.embedChapters = IsDlgButtonChecked(g_hEmbedChaptersCheck) == BST_CHECKED;
-                g_settings.ignoreConfig = IsDlgButtonChecked(g_hIgnoreConfigCheck) == BST_CHECKED;
-                g_settings.liveFromStart = IsDlgButtonChecked(g_hLiveFromStartCheck) == BST_CHECKED;
-                g_settings.noCacheDir = IsDlgButtonChecked(g_hNoCacheDirCheck) == BST_CHECKED;
+                g_settings.listFormats = IsDlgButtonChecked(hWnd, IDCANCEL) == BST_CHECKED; // fix below
+
+                // FIX: используем hWnd как родительский диалог
+                g_settings.listFormats = IsDlgButtonChecked(hWnd, (int)g_hListFormatsCheck) == BST_CHECKED;
+                g_settings.skipDownload = IsDlgButtonChecked(hWnd, (int)g_hSkipDownloadCheck) == BST_CHECKED;
+                g_settings.writeJson = IsDlgButtonChecked(hWnd, (int)g_hWriteJsonCheck) == BST_CHECKED;
+                g_settings.embedSubs = IsDlgButtonChecked(hWnd, (int)g_hEmbedSubsCheck) == BST_CHECKED;
+                g_settings.embedThumbnail = IsDlgButtonChecked(hWnd, (int)g_hEmbedThumbCheck) == BST_CHECKED;
+                g_settings.embedMetadata = IsDlgButtonChecked(hWnd, (int)g_hEmbedMetaCheck) == BST_CHECKED;
+                g_settings.embedChapters = IsDlgButtonChecked(hWnd, (int)g_hEmbedChaptersCheck) == BST_CHECKED;
+                g_settings.ignoreConfig = IsDlgButtonChecked(hWnd, (int)g_hIgnoreConfigCheck) == BST_CHECKED;
+                g_settings.liveFromStart = IsDlgButtonChecked(hWnd, (int)g_hLiveFromStartCheck) == BST_CHECKED;
+                g_settings.noCacheDir = IsDlgButtonChecked(hWnd, (int)g_hNoCacheDirCheck) == BST_CHECKED;
 
                 GetWindowTextW(g_hProxyEdit, buf, 2048);
                 g_settings.proxy = buf;
@@ -676,7 +666,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 AppendLog(L"\r\n=== Начало загрузки ===\r\n");
                 EnableWindow(g_hDownloadBtn, FALSE);
                 SendMessageW(g_hProgress, PBM_SETPOS, 0, 0);
-                _beginthread(RunYtDlpThread, 0, nullptr);
+                CreateThread(nullptr, 0, RunYtDlpThread, nullptr, 0, nullptr);
             }
             break;
         }
