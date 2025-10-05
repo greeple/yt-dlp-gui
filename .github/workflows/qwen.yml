@@ -1,5 +1,4 @@
-# .github/workflows/build.yml
-name: Build yt-dlp GUI
+name: Build qwen yt-dlp GUI
 
 on:
   push:
