@@ -9,6 +9,13 @@
 #include <sstream>
 #include <thread>
 
+// FIX: Добавляем недостающие определения GUIDs для MinGW
+#include <guiddef.h>
+DEFINE_GUID(FOLDERID_Desktop, 0xB4BFCC3A, 0xDB2C, 0x424C, 0xB0, 0x29, 0x7F, 0xE9, 0x9A, 0x87, 0xC6, 0x41);
+DEFINE_GUID(CLSID_FileOpenDialog, 0xDC1C5A9C, 0xE88A, 0x4dde, 0xA5, 0xA1, 0x60, 0xF8, 0x2A, 0x20, 0xAE, 0xF7);
+DEFINE_GUID(IID_IFileOpenDialog, 0xd57c7288, 0xd4AD, 0x4768, 0xBE, 0x02, 0x9D, 0x96, 0x95, 0x32, 0xD9, 0x60);
+// ---
+
 #pragma comment(lib, "comctl32.lib")
 
 // --- Глобальные переменные и константы ---
@@ -157,7 +164,8 @@ void DownloadThread(DownloadParams params) {
 
 
 // --- WinMain ---
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
+// FIX: Добавляем extern "C" для правильной линковки с MinGW
+extern "C" int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     hInst = hInstance;
     const wchar_t CLASS_NAME[] = L"YtDlpGuiClass";
 
@@ -192,6 +200,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_CREATE:
+            InitCommonControls(); // Инициализация общих элементов управления
             CreateControls(hWnd);
             LoadSettings();
             ResizeControls(hWnd);
@@ -387,7 +396,7 @@ void ResizeControls(HWND hWnd) {
     int width = rcClient.right - rcClient.left;
     int height = rcClient.bottom - rcClient.top;
 
-    int top_offset = PADDING * 3 + CONTROL_HEIGHT * 2 + 30; // Height of top controls + padding
+    int top_offset = PADDING * 3 + CONTROL_HEIGHT * 2 + 30 + PADDING; // Height of top controls + padding
 
     // URL and Path
     MoveWindow(hUrlEdit, 110, PADDING, width - 120, CONTROL_HEIGHT, TRUE);
@@ -399,7 +408,7 @@ void ResizeControls(HWND hWnd) {
     MoveWindow(hProgressBar, 140, PADDING * 3 + CONTROL_HEIGHT * 2, width - 150 - PADDING, 30, TRUE);
     
     // Log Button
-    int logButtonY = isLogVisible ? height - LOG_HEIGHT - CONTROL_HEIGHT : height - CONTROL_HEIGHT;
+    int logButtonY = isLogVisible ? height - LOG_HEIGHT - CONTROL_HEIGHT - PADDING : height - CONTROL_HEIGHT - PADDING;
     MoveWindow(hLogToggleButton, PADDING, logButtonY, 100, CONTROL_HEIGHT, TRUE);
 
     // Log Edit
@@ -427,8 +436,8 @@ void ResizeControls(HWND hWnd) {
 void OnDownloadClick() {
     if (isDownloading) return;
 
-    wchar_t url[1024];
-    GetWindowTextW(hUrlEdit, url, 1024);
+    wchar_t url[2048]; // Увеличим буфер для URL
+    GetWindowTextW(hUrlEdit, url, 2048);
     if (wcslen(url) == 0) {
         MessageBoxW(hMainWindow, L"Please enter a video URL.", L"Error", MB_OK | MB_ICONERROR);
         return;
@@ -495,7 +504,7 @@ void OnDownloadClick() {
     }
     
     // URL в конце
-    cmd << L" " << url;
+    cmd << L" \"" << url << L"\"";
 
     DownloadParams params = { cmd.str() };
     std::thread(DownloadThread, params).detach();
