@@ -68,14 +68,4 @@ jobs:
         name: YTDLPGui-Windows-x64
         path: package/
         
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v2
-      with:
-        files: |
-          package/YTDLPGui.exe
-          package/README.txt
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
