@@ -1,31 +1,27 @@
-cmake_minimum_required(VERSION 3.16)
-project(YTDLPGui)
+cmake_minimum_required(VERSION 3.18)
+project(yt_dlp_gui LANGUAGES CXX RC)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+add_executable(yt_dlp_gui WIN32
+    src/main.cpp
+    res/app.rc
+)
 
-# Set Unicode
-add_definitions(-DUNICODE -D_UNICODE)
+target_compile_features(yt_dlp_gui PRIVATE cxx_std_17)
+target_compile_definitions(yt_dlp_gui PRIVATE
+    UNICODE _UNICODE
+    WIN32_LEAN_AND_MEAN
+    NOMINMAX
+    _WIN32_WINNT=0x0601
+)
 
-# Add executable
-add_executable(YTDLPGui WIN32 main.cpp)
-
-# Link libraries
-target_link_libraries(YTDLPGui 
+target_link_libraries(yt_dlp_gui PRIVATE
     comctl32
+    shlwapi
     shell32
     ole32
 )
 
-# Set subsystem to Windows
-set_target_properties(YTDLPGui PROPERTIES
-    LINK_FLAGS "/SUBSYSTEM:WINDOWS"
+set_target_properties(yt_dlp_gui PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/Release
+    VS_GLOBAL_RunCodeAnalysis false
 )
-
-# Copy yt-dlp.exe to output directory (if exists)
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/yt-dlp.exe")
-    add_custom_command(TARGET YTDLPGui POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/yt-dlp.exe"
-        $<TARGET_FILE_DIR:YTDLPGui>)
-endif()
