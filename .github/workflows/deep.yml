@@ -1,0 +1,35 @@
+name: Build yt-dlp GUI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.1
+
+    - name: Restore NuGet packages
+      run: |
+        nuget restore yt-dlp-gui.sln
+
+    
+    - name: Build Release
+      run: |
+        msbuild yt-dlp-gui.sln /p:Configuration=Release /p:Platform=x64 /p:CharacterSet=Unicode
+
+
+    - name: Upload Release artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: yt-dlp-gui-release
+        path: bin/Release/
+        retention-days: 30
