@@ -1,462 +1,908 @@
+#define UNICODE
+#define _UNICODE
+#define NOMINMAX
 #include <windows.h>
 #include <commctrl.h>
 #include <shlobj.h>
 #include <string>
-#include <thread>
+#include <vector>
+#include <map>
+#include <fstream>
+#include <sstream>
+#include <locale>
+#include <codecvt>
 #include "resource.h"
-#include "settings.h"
 
 #pragma comment(lib, "comctl32.lib")
-#pragma comment(linker,"\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+#pragma comment(lib, "shell32.lib")
+#pragma comment(linker,"\"/manifestdependency:type='win32' \
+name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
+processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 // Глобальные переменные
-HWND hMainWindow;
-HWND hUrlEdit, hOutputEdit, hQualityCombo, hFormatCombo;
-HWND hDownloadBtn, hBrowseBtn, hProgressBar, hStatusText;
-HWND hLogEdit, hToggleLogBtn, hTabControl, hPresetCombo;
-HWND hLblProxy, hLblWait, hLblSections;
-HWND hLblConvSubs, hLblConvSubsHint, hLblConvThumb, hLblConvThumbHint;
-HWND hLblMerge, hLblMergeHint, hLblSort, hLblExtractor, hLblHeaders, hLblCookies;
+HINSTANCE g_hInst;
+HWND g_hMainWnd;
+HWND g_hTabControl;
+HWND g_hProgressBar;
+HWND g_hOutputEdit;
+HWND g_hToggleOutputBtn;
+HWND g_hDownloadBtn;
+HANDLE g_hDownloadThread = NULL;
+bool g_outputVisible = false;
+int g_originalHeight = 600;
 
-// Вкладки
-HWND hTab1, hTab2, hTab3;
+// Структура для хранения настроек
+struct Settings {
+    std::wstring savePath;
+    std::wstring format;
+    std::wstring quality;
+    std::wstring proxy;
+    std::wstring downloader;
+    std::wstring downloaderArgs;
+    std::wstring cookiesBrowser;
+    std::wstring cookiesFile;
+    std::wstring mergeFormat;
+    std::wstring convertSubs;
+    std::wstring convertThumbnails;
+    bool ignoreConfig = false;
+    bool liveFromStart = false;
+    bool embedSubs = false;
+    bool embedThumbnail = false;
+    bool embedMetadata = false;
+    bool embedChapters = false;
+    bool splitChapters = false;
+    bool skipDownload = false;
+    bool checkFormats = false;
+    bool saveJson = false;
+    bool listFormats = false;
+} g_settings;
 
-// Элементы управления на вкладках
-HWND hChkIgnoreConfig, hChkLiveFromStart, hChkNoCache, hChkSkipDownload;
-HWND hChkSaveJson, hChkListFormats, hChkCheckFormats;
-HWND hChkEmbedSubs, hChkEmbedThumbnail, hChkEmbedMetadata, hChkEmbedChapters;
-HWND hChkSplitChapters, hChkForceKeyframes;
-HWND hLblConfigLoc;
+// Контролы для вкладок
+struct TabControls {
+    // Основные
+    HWND hUrlEdit;
+    HWND hSavePathEdit;
+    HWND hBrowseBtn;
+    HWND hFormatCombo;
+    HWND hQualityCombo;
+    
+    // Сеть
+    HWND hProxyEdit;
+    HWND hCookiesBrowserCombo;
+    HWND hCookiesFileEdit;
+    HWND hCookiesFileBrowseBtn;
+    
+    // Загрузчик
+    HWND hDownloaderCombo;
+    HWND hDownloaderArgsEdit;
+    
+    // Обработка
+    HWND hMergeFormatCombo;
+    HWND hConvertSubsCombo;
+    HWND hConvertThumbnailsCombo;
+    HWND hEmbedSubsCheck;
+    HWND hEmbedThumbnailCheck;
+    HWND hEmbedMetadataCheck;
+    HWND hEmbedChaptersCheck;
+    HWND hSplitChaptersCheck;
+    
+    // Дополнительно
+    HWND hIgnoreConfigCheck;
+    HWND hLiveFromStartCheck;
+    HWND hCheckFormatsCheck;
+    HWND hSkipDownloadCheck;
+    HWND hSaveJsonCheck;
+    HWND hListFormatsCheck;
+    HWND hBatchFileEdit;
+    HWND hBatchFileBrowseBtn;
+    HWND hOutputTemplateEdit;
+    HWND hRemoveChaptersEdit;
+    
+    // Панели вкладок
+    HWND hTabBasic;
+    HWND hTabNetwork;
+    HWND hTabDownloader;
+    HWND hTabProcessing;
+    HWND hTabAdvanced;
+} g_controls;
 
-HWND hEditConfigLocations, hEditWaitForVideo, hEditProxy, hEditDownloadSections;
-HWND hEditDownloader, hEditDownloaderArgs, hEditBatchFile, hEditOutputTemplate;
-HWND hEditCookiesFile, hEditCookiesFromBrowser, hEditCacheDir;
-HWND hEditMergeFormat, hEditConvertSubs, hEditConvertThumbnails;
-HWND hEditRemoveChapters, hEditFormatSort, hEditExtractorArgs, hEditAddHeaders;
-
-HWND hBtnBrowseBatch, hBtnBrowseCookies, hBtnBrowseCache;
-HWND hBtnSavePreset, hBtnDeletePreset;
-
-bool isDownloading = false;
-bool isLogVisible = false;
-int normalHeight = 640;
-int expandedHeight = 890;
-static wchar_t g_TabName1[50] = L"Основные опции";
-static wchar_t g_TabName2[50] = L"Встраивание / Конвертация";
-static wchar_t g_TabName3[50] = L"Продвинутые";
-
-Settings settings;
-std::wstring currentPreset;
-
-// Конвертер UTF-8 <-> Wide String
+// Утилиты для работы со строками
 std::wstring Utf8ToWide(const std::string& str) {
-    if (str.empty()) return std::wstring();
+    if (str.empty()) return L"";
     int size = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, NULL, 0);
-    if (size <= 0) return std::wstring();
     std::wstring result(size, 0);
     MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, &result[0], size);
-    return result;
+    return result.c_str();
 }
 
 std::string WideToUtf8(const std::wstring& wstr) {
-    if (wstr.empty()) return std::string();
+    if (wstr.empty()) return "";
     int size = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, NULL, 0, NULL, NULL);
-    if (size <= 0) return std::string();
     std::string result(size, 0);
     WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, &result[0], size, NULL, NULL);
-    return result;
+    return result.c_str();
 }
 
-// Добавление текста в лог
-void AppendLog(const std::wstring& text) {
-    int len = GetWindowTextLengthW(hLogEdit);
-    SendMessageW(hLogEdit, EM_SETSEL, len, len);
-    SendMessageW(hLogEdit, EM_REPLACESEL, FALSE, (LPARAM)text.c_str());
-    SendMessageW(hLogEdit, EM_REPLACESEL, FALSE, (LPARAM)L"\r\n");
-    SendMessageW(hLogEdit, EM_SCROLLCARET, 0, 0);
-}
-
-void ClearLog() {
-    SetWindowTextW(hLogEdit, L"");
-}
-
-void ToggleLog() {
-    isLogVisible = !isLogVisible;
-    
-    RECT rect;
-    GetWindowRect(hMainWindow, &rect);
-    
-    if (isLogVisible) {
-        SetWindowPos(hMainWindow, NULL, 0, 0, 
-                     rect.right - rect.left, expandedHeight, 
-                     SWP_NOMOVE | SWP_NOZORDER);
-        ShowWindow(hLogEdit, SW_SHOW);
-        SetWindowTextW(hToggleLogBtn, L"▲ Скрыть лог");
-    } else {
-        SetWindowPos(hMainWindow, NULL, 0, 0, 
-                     rect.right - rect.left, normalHeight, 
-                     SWP_NOMOVE | SWP_NOZORDER);
-        ShowWindow(hLogEdit, SW_HIDE);
-        SetWindowTextW(hToggleLogBtn, L"▼ Показать лог");
+std::wstring GetDesktopPath() {
+    wchar_t path[MAX_PATH];
+    if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_DESKTOP, NULL, 0, path))) {
+        return path;
     }
+    return L"";
 }
 
-// Загрузка настроек в UI
-void LoadSettingsToUI() {
-    SetWindowTextW(hOutputEdit, settings.outputPath.c_str());
-    SendMessage(hQualityCombo, CB_SETCURSEL, settings.quality, 0);
-    SendMessage(hFormatCombo, CB_SETCURSEL, settings.format, 0);
-    
-    SendMessage(hChkIgnoreConfig, BM_SETCHECK, settings.ignoreConfig ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessage(hChkLiveFromStart, BM_SETCHECK, settings.liveFromStart ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessage(hChkNoCache, BM_SETCHECK, settings.noCacheDir ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessage(hChkSkipDownload, BM_SETCHECK, settings.skipDownload ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessage(hChkSaveJson, BM_SETCHECK, settings.saveJson ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessage(hChkListFormats, BM_SETCHECK, settings.listFormats ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessage(hChkCheckFormats, BM_SETCHECK, settings.checkFormats ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessage(hChkEmbedSubs, BM_SETCHECK, settings.embedSubs ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessage(hChkEmbedThumbnail, BM_SETCHECK, settings.embedThumbnail ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessage(hChkEmbedMetadata, BM_SETCHECK, settings.embedMetadata ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessage(hChkEmbedChapters, BM_SETCHECK, settings.embedChapters ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessage(hChkSplitChapters, BM_SETCHECK, settings.splitChapters ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessage(hChkForceKeyframes, BM_SETCHECK, settings.forceKeyframesAtCuts ? BST_CHECKED : BST_UNCHECKED, 0);
-    
-    SetWindowTextW(hEditConfigLocations, settings.configLocations.c_str());
-    SetWindowTextW(hEditWaitForVideo, settings.waitForVideo.c_str());
-    SetWindowTextW(hEditProxy, settings.proxyUrl.c_str());
-    SetWindowTextW(hEditDownloadSections, settings.downloadSections.c_str());
-    SetWindowTextW(hEditDownloader, settings.downloader.c_str());
-    SetWindowTextW(hEditDownloaderArgs, settings.downloaderArgs.c_str());
-    SetWindowTextW(hEditBatchFile, settings.batchFile.c_str());
-    SetWindowTextW(hEditOutputTemplate, settings.outputTemplate.c_str());
-    SetWindowTextW(hEditCookiesFile, settings.cookiesFile.c_str());
-    SetWindowTextW(hEditCookiesFromBrowser, settings.cookiesFromBrowser.c_str());
-    SetWindowTextW(hEditCacheDir, settings.cacheDir.c_str());
-    SetWindowTextW(hEditMergeFormat, settings.mergeOutputFormat.c_str());
-    SetWindowTextW(hEditConvertSubs, settings.convertSubs.c_str());
-    SetWindowTextW(hEditConvertThumbnails, settings.convertThumbnails.c_str());
-    SetWindowTextW(hEditRemoveChapters, settings.removeChapters.c_str());
-    SetWindowTextW(hEditFormatSort, settings.formatSort.c_str());
-    SetWindowTextW(hEditExtractorArgs, settings.extractorArgs.c_str());
-    SetWindowTextW(hEditAddHeaders, settings.addHeaders.c_str());
+std::wstring GetAppDirectory() {
+    wchar_t path[MAX_PATH];
+    GetModuleFileNameW(NULL, path, MAX_PATH);
+    std::wstring::size_type pos = std::wstring(path).find_last_of(L"\\/");
+    return std::wstring(path).substr(0, pos);
 }
 
-void SaveSettingsFromUI() {
+// Сохранение и загрузка настроек
+void SaveSettings() {
+    std::wstring iniPath = GetAppDirectory() + L"\\settings.ini";
+    
+    WritePrivateProfileStringW(L"Paths", L"SavePath", g_settings.savePath.c_str(), iniPath.c_str());
+    WritePrivateProfileStringW(L"Download", L"Format", g_settings.format.c_str(), iniPath.c_str());
+    WritePrivateProfileStringW(L"Download", L"Quality", g_settings.quality.c_str(), iniPath.c_str());
+    WritePrivateProfileStringW(L"Network", L"Proxy", g_settings.proxy.c_str(), iniPath.c_str());
+    WritePrivateProfileStringW(L"Network", L"CookiesBrowser", g_settings.cookiesBrowser.c_str(), iniPath.c_str());
+    WritePrivateProfileStringW(L"Network", L"CookiesFile", g_settings.cookiesFile.c_str(), iniPath.c_str());
+    WritePrivateProfileStringW(L"Downloader", L"Name", g_settings.downloader.c_str(), iniPath.c_str());
+    WritePrivateProfileStringW(L"Downloader", L"Args", g_settings.downloaderArgs.c_str(), iniPath.c_str());
+    WritePrivateProfileStringW(L"Processing", L"MergeFormat", g_settings.mergeFormat.c_str(), iniPath.c_str());
+    WritePrivateProfileStringW(L"Processing", L"ConvertSubs", g_settings.convertSubs.c_str(), iniPath.c_str());
+    WritePrivateProfileStringW(L"Processing", L"ConvertThumbnails", g_settings.convertThumbnails.c_str(), iniPath.c_str());
+    
+    WritePrivateProfileStringW(L"Options", L"IgnoreConfig", g_settings.ignoreConfig ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Options", L"LiveFromStart", g_settings.liveFromStart ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Options", L"EmbedSubs", g_settings.embedSubs ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Options", L"EmbedThumbnail", g_settings.embedThumbnail ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Options", L"EmbedMetadata", g_settings.embedMetadata ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Options", L"EmbedChapters", g_settings.embedChapters ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Options", L"SplitChapters", g_settings.splitChapters ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Options", L"CheckFormats", g_settings.checkFormats ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Options", L"SkipDownload", g_settings.skipDownload ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Options", L"SaveJson", g_settings.saveJson ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Options", L"ListFormats", g_settings.listFormats ? L"1" : L"0", iniPath.c_str());
+}
+
+void LoadSettings() {
+    std::wstring iniPath = GetAppDirectory() + L"\\settings.ini";
     wchar_t buffer[1024];
     
-    GetWindowTextW(hOutputEdit, buffer, 1024);
-    settings.outputPath = buffer;
+    GetPrivateProfileStringW(L"Paths", L"SavePath", GetDesktopPath().c_str(), buffer, 1024, iniPath.c_str());
+    g_settings.savePath = buffer;
     
-    settings.quality = SendMessage(hQualityCombo, CB_GETCURSEL, 0, 0);
-    settings.format = SendMessage(hFormatCombo, CB_GETCURSEL, 0, 0);
+    GetPrivateProfileStringW(L"Download", L"Format", L"bestvideo+bestaudio/best", buffer, 1024, iniPath.c_str());
+    g_settings.format = buffer;
     
-    settings.ignoreConfig = SendMessage(hChkIgnoreConfig, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    settings.liveFromStart = SendMessage(hChkLiveFromStart, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    settings.noCacheDir = SendMessage(hChkNoCache, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    settings.skipDownload = SendMessage(hChkSkipDownload, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    settings.saveJson = SendMessage(hChkSaveJson, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    settings.listFormats = SendMessage(hChkListFormats, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    settings.checkFormats = SendMessage(hChkCheckFormats, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    settings.embedSubs = SendMessage(hChkEmbedSubs, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    settings.embedThumbnail = SendMessage(hChkEmbedThumbnail, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    settings.embedMetadata = SendMessage(hChkEmbedMetadata, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    settings.embedChapters = SendMessage(hChkEmbedChapters, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    settings.splitChapters = SendMessage(hChkSplitChapters, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    GetPrivateProfileStringW(L"Download", L"Quality", L"best", buffer, 1024, iniPath.c_str());
+    g_settings.quality = buffer;
     
-    GetWindowTextW(hEditConfigLocations, buffer, 1024); settings.configLocations = buffer;
-    GetWindowTextW(hEditWaitForVideo, buffer, 1024); settings.waitForVideo = buffer;
-    GetWindowTextW(hEditProxy, buffer, 1024); settings.proxyUrl = buffer;
+    GetPrivateProfileStringW(L"Network", L"Proxy", L"", buffer, 1024, iniPath.c_str());
+    g_settings.proxy = buffer;
     
-    // Комбобоксы - получаем текст
-    int idx = SendMessage(hEditConvertSubs, CB_GETCURSEL, 0, 0);
-    if (idx > 0) {
-        SendMessageW(hEditConvertSubs, CB_GETLBTEXT, idx, (LPARAM)buffer);
-        settings.convertSubs = buffer;
-    } else {
-        settings.convertSubs = L"";
-    }
+    GetPrivateProfileStringW(L"Network", L"CookiesBrowser", L"", buffer, 1024, iniPath.c_str());
+    g_settings.cookiesBrowser = buffer;
     
-    idx = SendMessage(hEditConvertThumbnails, CB_GETCURSEL, 0, 0);
-    if (idx > 0) {
-        SendMessageW(hEditConvertThumbnails, CB_GETLBTEXT, idx, (LPARAM)buffer);
-        settings.convertThumbnails = buffer;
-    } else {
-        settings.convertThumbnails = L"";
-    }
+    GetPrivateProfileStringW(L"Network", L"CookiesFile", L"", buffer, 1024, iniPath.c_str());
+    g_settings.cookiesFile = buffer;
     
-    idx = SendMessage(hEditMergeFormat, CB_GETCURSEL, 0, 0);
-    if (idx > 0) {
-        SendMessageW(hEditMergeFormat, CB_GETLBTEXT, idx, (LPARAM)buffer);
-        settings.mergeOutputFormat = buffer;
-    } else {
-        settings.mergeOutputFormat = L"";
-    }
+    GetPrivateProfileStringW(L"Downloader", L"Name", L"", buffer, 1024, iniPath.c_str());
+    g_settings.downloader = buffer;
     
-    idx = SendMessage(hEditCookiesFromBrowser, CB_GETCURSEL, 0, 0);
-    if (idx > 0) {
-        SendMessageW(hEditCookiesFromBrowser, CB_GETLBTEXT, idx, (LPARAM)buffer);
-        settings.cookiesFromBrowser = buffer;
-    } else {
-        settings.cookiesFromBrowser = L"";
-    }
+    GetPrivateProfileStringW(L"Downloader", L"Args", L"", buffer, 1024, iniPath.c_str());
+    g_settings.downloaderArgs = buffer;
     
-    idx = SendMessage(hEditDownloader, CB_GETCURSEL, 0, 0);
-    if (idx > 0) {
-        SendMessageW(hEditDownloader, CB_GETLBTEXT, idx, (LPARAM)buffer);
-        settings.downloader = buffer;
-    } else {
-        settings.downloader = L"";
-    }
+    GetPrivateProfileStringW(L"Processing", L"MergeFormat", L"mp4", buffer, 1024, iniPath.c_str());
+    g_settings.mergeFormat = buffer;
     
-    GetWindowTextW(hEditCookiesFile, buffer, 1024); settings.cookiesFile = buffer;
-    GetWindowTextW(hEditFormatSort, buffer, 1024); settings.formatSort = buffer;
-    GetWindowTextW(hEditExtractorArgs, buffer, 1024); settings.extractorArgs = buffer;
+    GetPrivateProfileStringW(L"Processing", L"ConvertSubs", L"none", buffer, 1024, iniPath.c_str());
+    g_settings.convertSubs = buffer;
+    
+    GetPrivateProfileStringW(L"Processing", L"ConvertThumbnails", L"none", buffer, 1024, iniPath.c_str());
+    g_settings.convertThumbnails = buffer;
+    
+    g_settings.ignoreConfig = GetPrivateProfileIntW(L"Options", L"IgnoreConfig", 0, iniPath.c_str()) != 0;
+    g_settings.liveFromStart = GetPrivateProfileIntW(L"Options", L"LiveFromStart", 0, iniPath.c_str()) != 0;
+    g_settings.embedSubs = GetPrivateProfileIntW(L"Options", L"EmbedSubs", 0, iniPath.c_str()) != 0;
+    g_settings.embedThumbnail = GetPrivateProfileIntW(L"Options", L"EmbedThumbnail", 0, iniPath.c_str()) != 0;
+    g_settings.embedMetadata = GetPrivateProfileIntW(L"Options", L"EmbedMetadata", 0, iniPath.c_str()) != 0;
+    g_settings.embedChapters = GetPrivateProfileIntW(L"Options", L"EmbedChapters", 0, iniPath.c_str()) != 0;
+    g_settings.splitChapters = GetPrivateProfileIntW(L"Options", L"SplitChapters", 0, iniPath.c_str()) != 0;
+    g_settings.checkFormats = GetPrivateProfileIntW(L"Options", L"CheckFormats", 0, iniPath.c_str()) != 0;
+    g_settings.skipDownload = GetPrivateProfileIntW(L"Options", L"SkipDownload", 0, iniPath.c_str()) != 0;
+    g_settings.saveJson = GetPrivateProfileIntW(L"Options", L"SaveJson", 0, iniPath.c_str()) != 0;
+    g_settings.listFormats = GetPrivateProfileIntW(L"Options", L"ListFormats", 0, iniPath.c_str()) != 0;
 }
 
-// Загрузка пресетов в комбобокс
-void LoadPresetsToCombo() {
-    SendMessage(hPresetCombo, CB_RESETCONTENT, 0, 0);
-    SendMessageW(hPresetCombo, CB_ADDSTRING, 0, (LPARAM)L"[Без пресета - использовать настройки]");
+void UpdateSettingsFromControls() {
+    wchar_t buffer[1024];
     
-    auto profiles = settings.GetProfiles();
-    for (const auto& profile : profiles) {
-        SendMessageW(hPresetCombo, CB_ADDSTRING, 0, (LPARAM)profile.c_str());
+    GetWindowTextW(g_controls.hSavePathEdit, buffer, 1024);
+    g_settings.savePath = buffer;
+    
+    int idx = SendMessageW(g_controls.hFormatCombo, CB_GETCURSEL, 0, 0);
+    if (idx != CB_ERR) {
+        SendMessageW(g_controls.hFormatCombo, CB_GETLBTEXT, idx, (LPARAM)buffer);
+        g_settings.format = buffer;
     }
     
-    SendMessage(hPresetCombo, CB_SETCURSEL, 0, 0);
-}
-
-// Построение команды yt-dlp
-std::wstring BuildCommand(const std::wstring& url) {
-    std::wstring command = L"yt-dlp ";
+    idx = SendMessageW(g_controls.hQualityCombo, CB_GETCURSEL, 0, 0);
+    if (idx != CB_ERR) {
+        SendMessageW(g_controls.hQualityCombo, CB_GETLBTEXT, idx, (LPARAM)buffer);
+        g_settings.quality = buffer;
+    }
     
-    // Если выбран пресет, загружаем его настройки
-    int presetIdx = SendMessage(hPresetCombo, CB_GETCURSEL, 0, 0);
-    if (presetIdx > 0) {
-        wchar_t presetName[256];
-        SendMessageW(hPresetCombo, CB_GETLBTEXT, presetIdx, (LPARAM)presetName);
-        
-        Settings presetSettings;
-        presetSettings.Load(presetName);
-        settings = presetSettings;
+    GetWindowTextW(g_controls.hProxyEdit, buffer, 1024);
+    g_settings.proxy = buffer;
+    
+    idx = SendMessageW(g_controls.hCookiesBrowserCombo, CB_GETCURSEL, 0, 0);
+    if (idx != CB_ERR && idx != 0) {
+        SendMessageW(g_controls.hCookiesBrowserCombo, CB_GETLBTEXT, idx, (LPARAM)buffer);
+        g_settings.cookiesBrowser = buffer;
     } else {
-        SaveSettingsFromUI();
+        g_settings.cookiesBrowser = L"";
     }
     
-    // Основные опции
-    if (settings.ignoreConfig) command += L"--ignore-config ";
-    if (!settings.configLocations.empty()) command += L"--config-locations \"" + settings.configLocations + L"\" ";
-    if (settings.liveFromStart) command += L"--live-from-start ";
-    if (!settings.waitForVideo.empty()) command += L"--wait-for-video " + settings.waitForVideo + L" ";
-    if (!settings.proxyUrl.empty()) command += L"--proxy \"" + settings.proxyUrl + L"\" ";
+    GetWindowTextW(g_controls.hCookiesFileEdit, buffer, 1024);
+    g_settings.cookiesFile = buffer;
     
-    // Формат (если не используется пресет или пресет не переопределяет)
-    if (presetIdx == 0) {
-        if (settings.format == 1) {
-            command += L"-x --audio-format mp3 ";
-        } else if (settings.format == 2) {
-            command += L"-f \"bv*\" ";
-        }
-        
-        // Качество
-        switch (settings.quality) {
-            case 0: command += L"-f \"bv*[height<=2160]+ba/b[height<=2160]\" "; break;
-            case 1: command += L"-f \"bv*[height<=1440]+ba/b[height<=1440]\" "; break;
-            case 2: command += L"-f \"bv*[height<=1080]+ba/b[height<=1080]\" "; break;
-            case 3: command += L"-f \"bv*[height<=720]+ba/b[height<=720]\" "; break;
-            case 4: command += L"-f \"bv*[height<=480]+ba/b[height<=480]\" "; break;
-        }
+    idx = SendMessageW(g_controls.hDownloaderCombo, CB_GETCURSEL, 0, 0);
+    if (idx != CB_ERR && idx != 0) {
+        SendMessageW(g_controls.hDownloaderCombo, CB_GETLBTEXT, idx, (LPARAM)buffer);
+        g_settings.downloader = buffer;
+    } else {
+        g_settings.downloader = L"";
     }
     
-    // Опции загрузки
-    if (!settings.downloadSections.empty()) command += L"--download-sections \"" + settings.downloadSections + L"\" ";
-    if (!settings.downloader.empty()) command += L"--downloader " + settings.downloader + L" ";
-    if (!settings.downloaderArgs.empty()) command += L"--downloader-args \"" + settings.downloaderArgs + L"\" ";
-    if (!settings.batchFile.empty()) command += L"--batch-file \"" + settings.batchFile + L"\" ";
+    GetWindowTextW(g_controls.hDownloaderArgsEdit, buffer, 1024);
+    g_settings.downloaderArgs = buffer;
     
-    // Вывод
-    if (!settings.outputTemplate.empty()) {
-        command += L"-o \"" + settings.outputTemplate + L"\" ";
-    } else if (!settings.outputPath.empty()) {
-        command += L"-o \"" + settings.outputPath + L"/%(title)s.%(ext)s\" ";
+    idx = SendMessageW(g_controls.hMergeFormatCombo, CB_GETCURSEL, 0, 0);
+    if (idx != CB_ERR) {
+        SendMessageW(g_controls.hMergeFormatCombo, CB_GETLBTEXT, idx, (LPARAM)buffer);
+        g_settings.mergeFormat = buffer;
     }
     
-    // Cookies и кэш
-    if (!settings.cookiesFile.empty()) command += L"--cookies \"" + settings.cookiesFile + L"\" ";
-    if (!settings.cookiesFromBrowser.empty()) command += L"--cookies-from-browser " + settings.cookiesFromBrowser + L" ";
-    if (!settings.cacheDir.empty()) command += L"--cache-dir \"" + settings.cacheDir + L"\" ";
-    if (settings.noCacheDir) command += L"--no-cache-dir ";
+    idx = SendMessageW(g_controls.hConvertSubsCombo, CB_GETCURSEL, 0, 0);
+    if (idx != CB_ERR) {
+        SendMessageW(g_controls.hConvertSubsCombo, CB_GETLBTEXT, idx, (LPARAM)buffer);
+        g_settings.convertSubs = buffer;
+    }
     
-    // Режимы
-    if (settings.skipDownload) command += L"--skip-download ";
-    if (settings.saveJson) command += L"-J --write-info-json ";
-    if (settings.listFormats) command += L"-F ";
+    idx = SendMessageW(g_controls.hConvertThumbnailsCombo, CB_GETCURSEL, 0, 0);
+    if (idx != CB_ERR) {
+        SendMessageW(g_controls.hConvertThumbnailsCombo, CB_GETLBTEXT, idx, (LPARAM)buffer);
+        g_settings.convertThumbnails = buffer;
+    }
     
-    // Формат и конвертация
-    if (!settings.mergeOutputFormat.empty()) command += L"--merge-output-format " + settings.mergeOutputFormat + L" ";
-    if (settings.checkFormats) command += L"--check-formats ";
-    
-    // Встраивание
-    if (settings.embedSubs) command += L"--embed-subs ";
-    if (settings.embedThumbnail) command += L"--embed-thumbnail ";
-    if (settings.embedMetadata) command += L"--embed-metadata ";
-    if (settings.embedChapters) command += L"--embed-chapters ";
-    
-    // Конвертация
-    if (!settings.convertSubs.empty()) command += L"--convert-subs " + settings.convertSubs + L" ";
-    if (!settings.convertThumbnails.empty()) command += L"--convert-thumbnails " + settings.convertThumbnails + L" ";
-    
-    // Главы
-    if (settings.splitChapters) command += L"--split-chapters ";
-    if (!settings.removeChapters.empty()) command += L"--remove-chapters \"" + settings.removeChapters + L"\" ";
-    if (settings.forceKeyframesAtCuts) command += L"--force-keyframes-at-cuts ";
-    
-    // Сортировка форматов
-    if (!settings.formatSort.empty()) command += L"-S \"" + settings.formatSort + L"\" ";
-    
-    // Дополнительные аргументы
-    if (!settings.extractorArgs.empty()) command += L"--extractor-args " + settings.extractorArgs + L" ";
-    if (!settings.addHeaders.empty()) command += L"--add-headers \"" + settings.addHeaders + L"\" ";
-    
-    // Прогресс
-    command += L"--newline --progress --encoding UTF-8 ";
-    
-    // URL
-    command += L"\"" + url + L"\"";
-    
-    return command;
+    g_settings.embedSubs = SendMessageW(g_controls.hEmbedSubsCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings.embedThumbnail = SendMessageW(g_controls.hEmbedThumbnailCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings.embedMetadata = SendMessageW(g_controls.hEmbedMetadataCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings.embedChapters = SendMessageW(g_controls.hEmbedChaptersCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings.splitChapters = SendMessageW(g_controls.hSplitChaptersCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings.ignoreConfig = SendMessageW(g_controls.hIgnoreConfigCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings.liveFromStart = SendMessageW(g_controls.hLiveFromStartCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings.checkFormats = SendMessageW(g_controls.hCheckFormatsCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings.skipDownload = SendMessageW(g_controls.hSkipDownloadCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings.saveJson = SendMessageW(g_controls.hSaveJsonCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    g_settings.listFormats = SendMessageW(g_controls.hListFormatsCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
 }
 
-// Выполнение команды с правильной кодировкой UTF-8
-std::wstring ExecuteCommand(const std::wstring& command) {
-    HANDLE hReadPipe, hWritePipe;
-    SECURITY_ATTRIBUTES sa = { sizeof(SECURITY_ATTRIBUTES), NULL, TRUE };
+void UpdateControlsFromSettings() {
+    SetWindowTextW(g_controls.hSavePathEdit, g_settings.savePath.c_str());
     
-    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
-        return L"ERROR: Pipe creation failed";
+    SendMessageW(g_controls.hFormatCombo, CB_SELECTSTRING, -1, (LPARAM)g_settings.format.c_str());
+    SendMessageW(g_controls.hQualityCombo, CB_SELECTSTRING, -1, (LPARAM)g_settings.quality.c_str());
+    
+    SetWindowTextW(g_controls.hProxyEdit, g_settings.proxy.c_str());
+    
+    if (!g_settings.cookiesBrowser.empty()) {
+        SendMessageW(g_controls.hCookiesBrowserCombo, CB_SELECTSTRING, -1, (LPARAM)g_settings.cookiesBrowser.c_str());
     }
+    
+    SetWindowTextW(g_controls.hCookiesFileEdit, g_settings.cookiesFile.c_str());
+    
+    if (!g_settings.downloader.empty()) {
+        SendMessageW(g_controls.hDownloaderCombo, CB_SELECTSTRING, -1, (LPARAM)g_settings.downloader.c_str());
+    }
+    
+    SetWindowTextW(g_controls.hDownloaderArgsEdit, g_settings.downloaderArgs.c_str());
+    
+    SendMessageW(g_controls.hMergeFormatCombo, CB_SELECTSTRING, -1, (LPARAM)g_settings.mergeFormat.c_str());
+    SendMessageW(g_controls.hConvertSubsCombo, CB_SELECTSTRING, -1, (LPARAM)g_settings.convertSubs.c_str());
+    SendMessageW(g_controls.hConvertThumbnailsCombo, CB_SELECTSTRING, -1, (LPARAM)g_settings.convertThumbnails.c_str());
+    
+    SendMessageW(g_controls.hEmbedSubsCheck, BM_SETCHECK, g_settings.embedSubs ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(g_controls.hEmbedThumbnailCheck, BM_SETCHECK, g_settings.embedThumbnail ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(g_controls.hEmbedMetadataCheck, BM_SETCHECK, g_settings.embedMetadata ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(g_controls.hEmbedChaptersCheck, BM_SETCHECK, g_settings.embedChapters ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(g_controls.hSplitChaptersCheck, BM_SETCHECK, g_settings.splitChapters ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(g_controls.hIgnoreConfigCheck, BM_SETCHECK, g_settings.ignoreConfig ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(g_controls.hLiveFromStartCheck, BM_SETCHECK, g_settings.liveFromStart ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(g_controls.hCheckFormatsCheck, BM_SETCHECK, g_settings.checkFormats ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(g_controls.hSkipDownloadCheck, BM_SETCHECK, g_settings.skipDownload ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(g_controls.hSaveJsonCheck, BM_SETCHECK, g_settings.saveJson ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(g_controls.hListFormatsCheck, BM_SETCHECK, g_settings.listFormats ? BST_CHECKED : BST_UNCHECKED, 0);
+}
+
+// Создание вкладок
+HWND CreateTabPanel(HWND hParent, int id) {
+    return CreateWindowExW(0, L"Static", L"", WS_CHILD | WS_VISIBLE, 
+                          0, 0, 0, 0, hParent, (HMENU)(INT_PTR)id, g_hInst, NULL);
+}
+
+void CreateBasicTab(HWND hTab) {
+    int y = 15;
+    
+    CreateWindowExW(0, L"Static", L"URL видео:", WS_CHILD | WS_VISIBLE,
+                   10, y, 100, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hUrlEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"Edit", L"",
+                                         WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+                                         120, y, 550, 24, hTab, (HMENU)IDC_URL_EDIT, g_hInst, NULL);
+    y += 35;
+    
+    CreateWindowExW(0, L"Static", L"Путь сохранения:", WS_CHILD | WS_VISIBLE,
+                   10, y, 100, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hSavePathEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"Edit", L"",
+                                              WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+                                              120, y, 450, 24, hTab, (HMENU)IDC_SAVEPATH_EDIT, g_hInst, NULL);
+    g_controls.hBrowseBtn = CreateWindowExW(0, L"Button", L"Обзор...",
+                                           WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+                                           580, y, 90, 24, hTab, (HMENU)IDC_BROWSE_BTN, g_hInst, NULL);
+    y += 35;
+    
+    CreateWindowExW(0, L"Static", L"Формат:", WS_CHILD | WS_VISIBLE,
+                   10, y, 100, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hFormatCombo = CreateWindowExW(0, L"ComboBox", L"",
+                                             WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+                                             120, y, 250, 200, hTab, (HMENU)IDC_FORMAT_COMBO, g_hInst, NULL);
+    SendMessageW(g_controls.hFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"bestvideo+bestaudio/best");
+    SendMessageW(g_controls.hFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"best");
+    SendMessageW(g_controls.hFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"bestvideo+bestaudio");
+    SendMessageW(g_controls.hFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"bestvideo");
+    SendMessageW(g_controls.hFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"bestaudio");
+    SendMessageW(g_controls.hFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"worst");
+    SendMessageW(g_controls.hFormatCombo, CB_SETCURSEL, 0, 0);
+    y += 35;
+    
+    CreateWindowExW(0, L"Static", L"Качество:", WS_CHILD | WS_VISIBLE,
+                   10, y, 100, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hQualityCombo = CreateWindowExW(0, L"ComboBox", L"",
+                                              WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+                                              120, y, 250, 200, hTab, (HMENU)IDC_QUALITY_COMBO, g_hInst, NULL);
+    SendMessageW(g_controls.hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"best");
+    SendMessageW(g_controls.hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"2160p");
+    SendMessageW(g_controls.hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"1440p");
+    SendMessageW(g_controls.hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"1080p");
+    SendMessageW(g_controls.hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"720p");
+    SendMessageW(g_controls.hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"480p");
+    SendMessageW(g_controls.hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"360p");
+    SendMessageW(g_controls.hQualityCombo, CB_SETCURSEL, 0, 0);
+}
+
+void CreateNetworkTab(HWND hTab) {
+    int y = 15;
+    
+    CreateWindowExW(0, L"Static", L"Прокси URL:", WS_CHILD | WS_VISIBLE,
+                   10, y, 100, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hProxyEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"Edit", L"",
+                                           WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+                                           120, y, 550, 24, hTab, (HMENU)IDC_PROXY_EDIT, g_hInst, NULL);
+    y += 35;
+    
+    CreateWindowExW(0, L"Static", L"Cookies (браузер):", WS_CHILD | WS_VISIBLE,
+                   10, y, 100, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hCookiesBrowserCombo = CreateWindowExW(0, L"ComboBox", L"",
+                                                     WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+                                                     120, y, 250, 200, hTab, (HMENU)IDC_COOKIES_BROWSER_COMBO, g_hInst, NULL);
+    SendMessageW(g_controls.hCookiesBrowserCombo, CB_ADDSTRING, 0, (LPARAM)L"Не использовать");
+    SendMessageW(g_controls.hCookiesBrowserCombo, CB_ADDSTRING, 0, (LPARAM)L"chrome");
+    SendMessageW(g_controls.hCookiesBrowserCombo, CB_ADDSTRING, 0, (LPARAM)L"firefox");
+    SendMessageW(g_controls.hCookiesBrowserCombo, CB_ADDSTRING, 0, (LPARAM)L"edge");
+    SendMessageW(g_controls.hCookiesBrowserCombo, CB_ADDSTRING, 0, (LPARAM)L"opera");
+    SendMessageW(g_controls.hCookiesBrowserCombo, CB_ADDSTRING, 0, (LPARAM)L"brave");
+    SendMessageW(g_controls.hCookiesBrowserCombo, CB_ADDSTRING, 0, (LPARAM)L"chromium");
+    SendMessageW(g_controls.hCookiesBrowserCombo, CB_ADDSTRING, 0, (LPARAM)L"safari");
+    SendMessageW(g_controls.hCookiesBrowserCombo, CB_ADDSTRING, 0, (LPARAM)L"vivaldi");
+    SendMessageW(g_controls.hCookiesBrowserCombo, CB_SETCURSEL, 0, 0);
+    y += 35;
+    
+    CreateWindowExW(0, L"Static", L"Cookies (файл):", WS_CHILD | WS_VISIBLE,
+                   10, y, 100, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hCookiesFileEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"Edit", L"",
+                                                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+                                                 120, y, 450, 24, hTab, (HMENU)IDC_COOKIES_FILE_EDIT, g_hInst, NULL);
+    g_controls.hCookiesFileBrowseBtn = CreateWindowExW(0, L"Button", L"Обзор...",
+                                                      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+                                                      580, y, 90, 24, hTab, (HMENU)IDC_COOKIES_FILE_BROWSE_BTN, g_hInst, NULL);
+}
+
+void CreateDownloaderTab(HWND hTab) {
+    int y = 15;
+    
+    CreateWindowExW(0, L"Static", L"Загрузчик:", WS_CHILD | WS_VISIBLE,
+                   10, y, 100, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hDownloaderCombo = CreateWindowExW(0, L"ComboBox", L"",
+                                                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+                                                 120, y, 250, 200, hTab, (HMENU)IDC_DOWNLOADER_COMBO, g_hInst, NULL);
+    SendMessageW(g_controls.hDownloaderCombo, CB_ADDSTRING, 0, (LPARAM)L"По умолчанию");
+    SendMessageW(g_controls.hDownloaderCombo, CB_ADDSTRING, 0, (LPARAM)L"native");
+    SendMessageW(g_controls.hDownloaderCombo, CB_ADDSTRING, 0, (LPARAM)L"aria2c");
+    SendMessageW(g_controls.hDownloaderCombo, CB_ADDSTRING, 0, (LPARAM)L"axel");
+    SendMessageW(g_controls.hDownloaderCombo, CB_ADDSTRING, 0, (LPARAM)L"curl");
+    SendMessageW(g_controls.hDownloaderCombo, CB_ADDSTRING, 0, (LPARAM)L"ffmpeg");
+    SendMessageW(g_controls.hDownloaderCombo, CB_ADDSTRING, 0, (LPARAM)L"httpie");
+    SendMessageW(g_controls.hDownloaderCombo, CB_ADDSTRING, 0, (LPARAM)L"wget");
+    SendMessageW(g_controls.hDownloaderCombo, CB_SETCURSEL, 0, 0);
+    y += 35;
+    
+    CreateWindowExW(0, L"Static", L"Аргументы загрузчика:", WS_CHILD | WS_VISIBLE,
+                   10, y, 100, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hDownloaderArgsEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"Edit", L"",
+                                                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+                                                    120, y, 550, 24, hTab, (HMENU)IDC_DOWNLOADER_ARGS_EDIT, g_hInst, NULL);
+}
+
+void CreateProcessingTab(HWND hTab) {
+    int y = 15;
+    
+    CreateWindowExW(0, L"Static", L"Формат объединения:", WS_CHILD | WS_VISIBLE,
+                   10, y, 120, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hMergeFormatCombo = CreateWindowExW(0, L"ComboBox", L"",
+                                                  WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+                                                  140, y, 150, 200, hTab, (HMENU)IDC_MERGE_FORMAT_COMBO, g_hInst, NULL);
+    SendMessageW(g_controls.hMergeFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"mp4");
+    SendMessageW(g_controls.hMergeFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"mkv");
+    SendMessageW(g_controls.hMergeFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"webm");
+    SendMessageW(g_controls.hMergeFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"avi");
+    SendMessageW(g_controls.hMergeFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"flv");
+    SendMessageW(g_controls.hMergeFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"mov");
+    SendMessageW(g_controls.hMergeFormatCombo, CB_SETCURSEL, 0, 0);
+    y += 35;
+    
+    CreateWindowExW(0, L"Static", L"Конвертация субтитров:", WS_CHILD | WS_VISIBLE,
+                   10, y, 120, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hConvertSubsCombo = CreateWindowExW(0, L"ComboBox", L"",
+                                                  WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+                                                  140, y, 150, 200, hTab, (HMENU)IDC_CONVERT_SUBS_COMBO, g_hInst, NULL);
+    SendMessageW(g_controls.hConvertSubsCombo, CB_ADDSTRING, 0, (LPARAM)L"none");
+    SendMessageW(g_controls.hConvertSubsCombo, CB_ADDSTRING, 0, (LPARAM)L"srt");
+    SendMessageW(g_controls.hConvertSubsCombo, CB_ADDSTRING, 0, (LPARAM)L"ass");
+    SendMessageW(g_controls.hConvertSubsCombo, CB_ADDSTRING, 0, (LPARAM)L"vtt");
+    SendMessageW(g_controls.hConvertSubsCombo, CB_ADDSTRING, 0, (LPARAM)L"lrc");
+    SendMessageW(g_controls.hConvertSubsCombo, CB_SETCURSEL, 0, 0);
+    y += 35;
+    
+    CreateWindowExW(0, L"Static", L"Конвертация миниатюр:", WS_CHILD | WS_VISIBLE,
+                   10, y, 120, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hConvertThumbnailsCombo = CreateWindowExW(0, L"ComboBox", L"",
+                                                        WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+                                                        140, y, 150, 200, hTab, (HMENU)IDC_CONVERT_THUMBNAILS_COMBO, g_hInst, NULL);
+    SendMessageW(g_controls.hConvertThumbnailsCombo, CB_ADDSTRING, 0, (LPARAM)L"none");
+    SendMessageW(g_controls.hConvertThumbnailsCombo, CB_ADDSTRING, 0, (LPARAM)L"jpg");
+    SendMessageW(g_controls.hConvertThumbnailsCombo, CB_ADDSTRING, 0, (LPARAM)L"png");
+    SendMessageW(g_controls.hConvertThumbnailsCombo, CB_ADDSTRING, 0, (LPARAM)L"webp");
+    SendMessageW(g_controls.hConvertThumbnailsCombo, CB_SETCURSEL, 0, 0);
+    y += 35;
+    
+    g_controls.hEmbedSubsCheck = CreateWindowExW(0, L"Button", L"Встраивать субтитры",
+                                                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+                                                10, y, 200, 20, hTab, (HMENU)IDC_EMBED_SUBS_CHECK, g_hInst, NULL);
+    y += 25;
+    
+    g_controls.hEmbedThumbnailCheck = CreateWindowExW(0, L"Button", L"Встраивать миниатюру",
+                                                      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+                                                      10, y, 200, 20, hTab, (HMENU)IDC_EMBED_THUMBNAIL_CHECK, g_hInst, NULL);
+    y += 25;
+    
+    g_controls.hEmbedMetadataCheck = CreateWindowExW(0, L"Button", L"Встраивать метаданные",
+                                                     WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+                                                     10, y, 200, 20, hTab, (HMENU)IDC_EMBED_METADATA_CHECK, g_hInst, NULL);
+    y += 25;
+    
+    g_controls.hEmbedChaptersCheck = CreateWindowExW(0, L"Button", L"Встраивать главы",
+                                                     WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+                                                     10, y, 200, 20, hTab, (HMENU)IDC_EMBED_CHAPTERS_CHECK, g_hInst, NULL);
+    y += 25;
+    
+    g_controls.hSplitChaptersCheck = CreateWindowExW(0, L"Button", L"Разделить по главам",
+                                                     WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+                                                     10, y, 200, 20, hTab, (HMENU)IDC_SPLIT_CHAPTERS_CHECK, g_hInst, NULL);
+}
+
+void CreateAdvancedTab(HWND hTab) {
+    int y = 15;
+    
+    g_controls.hIgnoreConfigCheck = CreateWindowExW(0, L"Button", L"Игнорировать конфигурационные файлы (--ignore-config)",
+                                                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+                                                    10, y, 400, 20, hTab, (HMENU)IDC_IGNORE_CONFIG_CHECK, g_hInst, NULL);
+    y += 25;
+    
+    g_controls.hLiveFromStartCheck = CreateWindowExW(0, L"Button", L"Скачивать трансляцию с начала (--live-from-start)",
+                                                     WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+                                                     10, y, 400, 20, hTab, (HMENU)IDC_LIVE_FROM_START_CHECK, g_hInst, NULL);
+    y += 25;
+    
+    g_controls.hCheckFormatsCheck = CreateWindowExW(0, L"Button", L"Проверять форматы (--check-formats)",
+                                                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+                                                    10, y, 300, 20, hTab, (HMENU)IDC_CHECK_FORMATS_CHECK, g_hInst, NULL);
+    y += 25;
+    
+    g_controls.hSkipDownloadCheck = CreateWindowExW(0, L"Button", L"Пропустить загрузку (--skip-download)",
+                                                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+                                                    10, y, 300, 20, hTab, (HMENU)IDC_SKIP_DOWNLOAD_CHECK, g_hInst, NULL);
+    y += 25;
+    
+    g_controls.hSaveJsonCheck = CreateWindowExW(0, L"Button", L"Сохранить JSON информацию (-J)",
+                                               WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+                                               10, y, 300, 20, hTab, (HMENU)IDC_SAVE_JSON_CHECK, g_hInst, NULL);
+    y += 25;
+    
+    g_controls.hListFormatsCheck = CreateWindowExW(0, L"Button", L"Показать доступные форматы (-F)",
+                                                  WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+                                                  10, y, 300, 20, hTab, (HMENU)IDC_LIST_FORMATS_CHECK, g_hInst, NULL);
+    y += 35;
+    
+    CreateWindowExW(0, L"Static", L"Batch файл (список URL):", WS_CHILD | WS_VISIBLE,
+                   10, y, 120, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hBatchFileEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"Edit", L"",
+                                               WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+                                               140, y, 430, 24, hTab, (HMENU)IDC_BATCH_FILE_EDIT, g_hInst, NULL);
+    g_controls.hBatchFileBrowseBtn = CreateWindowExW(0, L"Button", L"Обзор...",
+                                                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+                                                    580, y, 90, 24, hTab, (HMENU)IDC_BATCH_FILE_BROWSE_BTN, g_hInst, NULL);
+    y += 35;
+    
+    CreateWindowExW(0, L"Static", L"Шаблон имени файла (-o):", WS_CHILD | WS_VISIBLE,
+                   10, y, 120, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hOutputTemplateEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"Edit", L"",
+                                                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+                                                    140, y, 530, 24, hTab, (HMENU)IDC_OUTPUT_TEMPLATE_EDIT, g_hInst, NULL);
+    y += 35;
+    
+    CreateWindowExW(0, L"Static", L"Удалить главы (regex):", WS_CHILD | WS_VISIBLE,
+                   10, y, 120, 20, hTab, NULL, g_hInst, NULL);
+    g_controls.hRemoveChaptersEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"Edit", L"",
+                                                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+                                                    140, y, 530, 24, hTab, (HMENU)IDC_REMOVE_CHAPTERS_EDIT, g_hInst, NULL);
+}
+
+void ShowTab(int index) {
+    ShowWindow(g_controls.hTabBasic, index == 0 ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_controls.hTabNetwork, index == 1 ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_controls.hTabDownloader, index == 2 ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_controls.hTabProcessing, index == 3 ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_controls.hTabAdvanced, index == 4 ? SW_SHOW : SW_HIDE);
+}
+
+void ResizeControls(int width, int height) {
+    int tabHeight = height - 150;
+    if (g_outputVisible) {
+        tabHeight = height - 350;
+    }
+    
+    // Tab control
+    MoveWindow(g_hTabControl, 10, 10, width - 20, tabHeight, TRUE);
+    
+    // Tab panels
+    RECT rc;
+    GetClientRect(g_hTabControl, &rc);
+    TabCtrl_AdjustRect(g_hTabControl, FALSE, &rc);
+    
+    MoveWindow(g_controls.hTabBasic, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, TRUE);
+    MoveWindow(g_controls.hTabNetwork, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, TRUE);
+    MoveWindow(g_controls.hTabDownloader, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, TRUE);
+    MoveWindow(g_controls.hTabProcessing, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, TRUE);
+    MoveWindow(g_controls.hTabAdvanced, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, TRUE);
+    
+    // Resize controls in Basic tab
+    if (g_controls.hUrlEdit) {
+        MoveWindow(g_controls.hUrlEdit, 120, 15, rc.right - rc.left - 130, 24, TRUE);
+    }
+    if (g_controls.hSavePathEdit) {
+        MoveWindow(g_controls.hSavePathEdit, 120, 50, rc.right - rc.left - 220, 24, TRUE);
+        MoveWindow(g_controls.hBrowseBtn, rc.right - rc.left - 90, 50, 80, 24, TRUE);
+    }
+    
+    int bottomY = 10 + tabHeight;
+    
+    // Progress bar
+    MoveWindow(g_hProgressBar, 10, bottomY, width - 20, 25, TRUE);
+    bottomY += 30;
+    
+    // Toggle output button
+    MoveWindow(g_hToggleOutputBtn, 10, bottomY, 150, 25, TRUE);
+    bottomY += 30;
+    
+    // Output edit (if visible)
+    if (g_outputVisible) {
+        MoveWindow(g_hOutputEdit, 10, bottomY, width - 20, 150, TRUE);
+        bottomY += 155;
+    }
+    
+    // Download button
+    MoveWindow(g_hDownloadBtn, width - 120, bottomY, 110, 30, TRUE);
+}
+
+void ToggleOutput() {
+    g_outputVisible = !g_outputVisible;
+    
+    RECT rc;
+    GetClientRect(g_hMainWnd, &rc);
+    
+    if (g_outputVisible) {
+        SetWindowTextW(g_hToggleOutputBtn, L"Скрыть вывод ▲");
+        ShowWindow(g_hOutputEdit, SW_SHOW);
+    } else {
+        SetWindowTextW(g_hToggleOutputBtn, L"Показать вывод ▼");
+        ShowWindow(g_hOutputEdit, SW_HIDE);
+    }
+    
+    ResizeControls(rc.right, rc.bottom);
+}
+
+void AppendOutput(const std::wstring& text) {
+    int len = GetWindowTextLengthW(g_hOutputEdit);
+    SendMessageW(g_hOutputEdit, EM_SETSEL, len, len);
+    SendMessageW(g_hOutputEdit, EM_REPLACESEL, FALSE, (LPARAM)text.c_str());
+}
+
+std::wstring BuildYtdlpCommand(const std::wstring& url) {
+    std::wstring cmd = L"yt-dlp.exe";
+    
+    if (g_settings.ignoreConfig) {
+        cmd += L" --ignore-config";
+    }
+    
+    if (g_settings.liveFromStart) {
+        cmd += L" --live-from-start";
+    }
+    
+    if (!g_settings.proxy.empty()) {
+        cmd += L" --proxy \"" + g_settings.proxy + L"\"";
+    }
+    
+    if (!g_settings.cookiesBrowser.empty()) {
+        cmd += L" --cookies-from-browser " + g_settings.cookiesBrowser;
+    }
+    
+    if (!g_settings.cookiesFile.empty()) {
+        cmd += L" --cookies \"" + g_settings.cookiesFile + L"\"";
+    }
+    
+    if (!g_settings.downloader.empty()) {
+        cmd += L" --downloader " + g_settings.downloader;
+    }
+    
+    if (!g_settings.downloaderArgs.empty()) {
+        cmd += L" --downloader-args \"" + g_settings.downloaderArgs + L"\"";
+    }
+    
+    wchar_t batchFile[1024];
+    GetWindowTextW(g_controls.hBatchFileEdit, batchFile, 1024);
+    if (wcslen(batchFile) > 0) {
+        cmd += L" --batch-file \"" + std::wstring(batchFile) + L"\"";
+    }
+    
+    wchar_t outputTemplate[1024];
+    GetWindowTextW(g_controls.hOutputTemplateEdit, outputTemplate, 1024);
+    if (wcslen(outputTemplate) > 0) {
+        cmd += L" -o \"" + std::wstring(outputTemplate) + L"\"";
+    } else {
+        cmd += L" -o \"%(title)s.%(ext)s\"";
+    }
+    
+    if (!g_settings.format.empty() && g_settings.format != L"best") {
+        cmd += L" -f \"" + g_settings.format + L"\"";
+    }
+    
+    if (g_settings.listFormats) {
+        cmd += L" -F";
+    }
+    
+    if (!g_settings.mergeFormat.empty()) {
+        cmd += L" --merge-output-format " + g_settings.mergeFormat;
+    }
+    
+    if (g_settings.checkFormats) {
+        cmd += L" --check-formats";
+    }
+    
+    if (g_settings.embedSubs) {
+        cmd += L" --embed-subs";
+    }
+    
+    if (g_settings.embedThumbnail) {
+        cmd += L" --embed-thumbnail";
+    }
+    
+    if (g_settings.embedMetadata) {
+        cmd += L" --embed-metadata";
+    }
+    
+    if (g_settings.embedChapters) {
+        cmd += L" --embed-chapters";
+    }
+    
+    if (g_settings.convertSubs != L"none") {
+        cmd += L" --convert-subs " + g_settings.convertSubs;
+    }
+    
+    if (g_settings.convertThumbnails != L"none") {
+        cmd += L" --convert-thumbnails " + g_settings.convertThumbnails;
+    }
+    
+    if (g_settings.splitChapters) {
+        cmd += L" --split-chapters";
+    }
+    
+    wchar_t removeChapters[1024];
+    GetWindowTextW(g_controls.hRemoveChaptersEdit, removeChapters, 1024);
+    if (wcslen(removeChapters) > 0) {
+        cmd += L" --remove-chapters \"" + std::wstring(removeChapters) + L"\"";
+    }
+    
+    if (g_settings.skipDownload) {
+        cmd += L" --skip-download";
+    }
+    
+    if (g_settings.saveJson) {
+        cmd += L" -J";
+    }
+    
+    cmd += L" --newline --encoding utf-8";
+    cmd += L" -P \"" + g_settings.savePath + L"\"";
+    cmd += L" \"" + url + L"\"";
+    
+    return cmd;
+}
+
+DWORD WINAPI DownloadThread(LPVOID lpParam) {
+    std::wstring url = *(std::wstring*)lpParam;
+    delete (std::wstring*)lpParam;
+    
+    SendMessageW(g_hProgressBar, PBM_SETMARQUEE, TRUE, 0);
+    SetWindowTextW(g_hDownloadBtn, L"Остановить");
+    AppendOutput(L"Начало загрузки...\r\n");
+    
+    std::wstring cmd = BuildYtdlpCommand(url);
+    AppendOutput(L"Команда: " + cmd + L"\r\n\r\n");
+    
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+    sa.bInheritHandle = TRUE;
+    sa.lpSecurityDescriptor = NULL;
+    
+    HANDLE hStdOutRead, hStdOutWrite;
+    if (!CreatePipe(&hStdOutRead, &hStdOutWrite, &sa, 0)) {
+        AppendOutput(L"Ошибка создания pipe\r\n");
+        SendMessageW(g_hProgressBar, PBM_SETMARQUEE, FALSE, 0);
+        SetWindowTextW(g_hDownloadBtn, L"Скачать");
+        return 1;
+    }
+    
+    SetHandleInformation(hStdOutRead, HANDLE_FLAG_INHERIT, 0);
     
     STARTUPINFOW si = { sizeof(STARTUPINFOW) };
     si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
-    si.hStdOutput = hWritePipe;
-    si.hStdError = hWritePipe;
     si.wShowWindow = SW_HIDE;
+    si.hStdOutput = hStdOutWrite;
+    si.hStdError = hStdOutWrite;
     
     PROCESS_INFORMATION pi;
-    std::wstring cmdCopy = command;
     
-    if (!CreateProcessW(NULL, &cmdCopy[0], NULL, NULL, TRUE, 
-                        CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
-        CloseHandle(hReadPipe);
-        CloseHandle(hWritePipe);
-        return L"ERROR: Process creation failed";
+    wchar_t* cmdLine = _wcsdup(cmd.c_str());
+    BOOL result = CreateProcessW(NULL, cmdLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, 
+                                g_settings.savePath.c_str(), &si, &pi);
+    free(cmdLine);
+    
+    CloseHandle(hStdOutWrite);
+    
+    if (!result) {
+        AppendOutput(L"Ошибка запуска yt-dlp. Убедитесь, что yt-dlp.exe находится в PATH или в папке с программой.\r\n");
+        CloseHandle(hStdOutRead);
+        SendMessageW(g_hProgressBar, PBM_SETMARQUEE, FALSE, 0);
+        SetWindowTextW(g_hDownloadBtn, L"Скачать");
+        return 1;
     }
     
-    CloseHandle(hWritePipe);
-    
-    std::string output;
+    // Чтение вывода
     char buffer[4096];
     DWORD bytesRead;
+    std::string outputBuffer;
     
-    SendMessage(hProgressBar, PBM_SETPOS, 0, 0);
-    
-    while (ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
-        buffer[bytesRead] = '\0';
-        output += buffer;
+    while (ReadFile(hStdOutRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
+        buffer[bytesRead] = 0;
+        outputBuffer += buffer;
         
-        // Преобразуем из UTF-8 в Wide для корректного отображения
-        std::wstring wBuffer = Utf8ToWide(buffer);
-        AppendLog(wBuffer);
-        
-        // Парсинг прогресса
-        std::string line = buffer;
-        size_t pos = line.find("%");
-        if (pos != std::string::npos && pos > 0) {
-            size_t start = pos;
-            while (start > 0 && (isdigit(line[start-1]) || line[start-1] == '.')) {
-                start--;
-            }
-            if (start < pos) {
-                try {
-                    std::string percentStr = line.substr(start, pos - start);
-                    float percent = std::stof(percentStr);
-                    SendMessage(hProgressBar, PBM_SETPOS, (WPARAM)percent, 0);
-                    
-                    std::wstring status = L"Загрузка: " + std::to_wstring((int)percent) + L"%";
-                    SendMessageW(hStatusText, WM_SETTEXT, 0, (LPARAM)status.c_str());
-                } catch (...) {}
+        // Обработка построчно
+        size_t pos;
+        while ((pos = outputBuffer.find('\n')) != std::string::npos) {
+            std::string line = outputBuffer.substr(0, pos + 1);
+            outputBuffer.erase(0, pos + 1);
+            
+            // Конвертация из UTF-8 в Wide
+            std::wstring wline = Utf8ToWide(line);
+            AppendOutput(wline);
+            
+            // Парсинг прогресса
+            if (line.find("[download]") != std::string::npos) {
+                size_t percentPos = line.find('%');
+                if (percentPos != std::string::npos) {
+                    // Ищем число перед %
+                    size_t start = percentPos;
+                    while (start > 0 && (isdigit(line[start - 1]) || line[start - 1] == '.')) {
+                        start--;
+                    }
+                    if (start < percentPos) {
+                        std::string percentStr = line.substr(start, percentPos - start);
+                        float percent = (float)atof(percentStr.c_str());
+                        SendMessageW(g_hProgressBar, PBM_SETMARQUEE, FALSE, 0);
+                        SendMessageW(g_hProgressBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
+                        SendMessageW(g_hProgressBar, PBM_SETPOS, (int)percent, 0);
+                    }
+                }
             }
         }
+    }
+    
+    if (!outputBuffer.empty()) {
+        AppendOutput(Utf8ToWide(outputBuffer));
     }
     
     WaitForSingleObject(pi.hProcess, INFINITE);
     
-    DWORD exitCode = 0;
+    DWORD exitCode;
     GetExitCodeProcess(pi.hProcess, &exitCode);
     
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
-    CloseHandle(hReadPipe);
+    CloseHandle(hStdOutRead);
     
-    return exitCode == 0 ? L"SUCCESS" : L"ERROR";
+    if (exitCode == 0) {
+        AppendOutput(L"\r\nЗагрузка завершена успешно!\r\n");
+        SendMessageW(g_hProgressBar, PBM_SETPOS, 100, 0);
+    } else {
+        AppendOutput(L"\r\nОшибка при загрузке!\r\n");
+        SendMessageW(g_hProgressBar, PBM_SETPOS, 0, 0);
+    }
+    
+    SetWindowTextW(g_hDownloadBtn, L"Скачать");
+    g_hDownloadThread = NULL;
+    
+    return exitCode;
 }
 
-// Поток загрузки
-void DownloadThread() {
-    wchar_t url[2048];
-    GetWindowTextW(hUrlEdit, url, 2048);
-    
-    if (wcslen(url) == 0) {
-        MessageBoxW(hMainWindow, L"Введите URL!", L"Ошибка", MB_ICONERROR);
-        isDownloading = false;
-        EnableWindow(hDownloadBtn, TRUE);
-        SetWindowTextW(hDownloadBtn, L"Скачать");
+void StartDownload() {
+    if (g_hDownloadThread != NULL) {
+        // TODO: Implement process termination
         return;
     }
     
-    if (!isLogVisible) {
-        ToggleLog();
+    wchar_t url[2048];
+    GetWindowTextW(g_controls.hUrlEdit, url, 2048);
+    
+    if (wcslen(url) == 0) {
+        MessageBoxW(g_hMainWnd, L"Введите URL видео!", L"Ошибка", MB_OK | MB_ICONERROR);
+        return;
     }
     
-    ClearLog();
-    AppendLog(L"=== Начало загрузки ===");
-    AppendLog(L"URL: " + std::wstring(url));
-    AppendLog(L"");
+    UpdateSettingsFromControls();
+    SaveSettings();
     
-    std::wstring command = BuildCommand(url);
-    AppendLog(L"Команда: " + command);
-    AppendLog(L"");
-    AppendLog(L"--- Вывод yt-dlp ---");
+    SetWindowTextW(g_hOutputEdit, L"");
+    SendMessageW(g_hProgressBar, PBM_SETPOS, 0, 0);
     
-    SendMessage(hProgressBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
-    SendMessage(hProgressBar, PBM_SETPOS, 0, 0);
-    SendMessageW(hStatusText, WM_SETTEXT, 0, (LPARAM)L"Загрузка...");
-    
-    std::wstring result = ExecuteCommand(command);
-    
-    if (result == L"SUCCESS") {
-        SendMessage(hProgressBar, PBM_SETPOS, 100, 0);
-        MessageBoxW(hMainWindow, L"Загрузка завершена успешно!", L"Успех", MB_ICONINFORMATION);
-        SendMessageW(hStatusText, WM_SETTEXT, 0, (LPARAM)L"✓ Готово!");
-        AppendLog(L"");
-        AppendLog(L"=== Загрузка завершена успешно! ===");
-    } else {
-        SendMessage(hProgressBar, PBM_SETPOS, 0, 0);
-        MessageBoxW(hMainWindow, L"Произошла ошибка! Проверьте лог.", L"Ошибка", MB_ICONERROR);
-        SendMessageW(hStatusText, WM_SETTEXT, 0, (LPARAM)L"✗ Ошибка!");
-        AppendLog(L"");
-        AppendLog(L"=== Ошибка загрузки! ===");
-    }
-    
-    isDownloading = false;
-    EnableWindow(hDownloadBtn, TRUE);
-    SetWindowTextW(hDownloadBtn, L"Скачать");
+    std::wstring* urlCopy = new std::wstring(url);
+    g_hDownloadThread = CreateThread(NULL, 0, DownloadThread, urlCopy, 0, NULL);
 }
 
-// Обработчик выбора папки
-void BrowseFolder() {
+void BrowseFolder(HWND hEdit) {
     BROWSEINFOW bi = { 0 };
-    bi.hwndOwner = hMainWindow;
+    bi.hwndOwner = g_hMainWnd;
     bi.lpszTitle = L"Выберите папку для сохранения";
     bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
     
@@ -464,19 +910,18 @@ void BrowseFolder() {
     if (pidl != NULL) {
         wchar_t path[MAX_PATH];
         if (SHGetPathFromIDListW(pidl, path)) {
-            SetWindowTextW(hOutputEdit, path);
+            SetWindowTextW(hEdit, path);
         }
         CoTaskMemFree(pidl);
     }
 }
 
-// Обработчик выбора файла
-void BrowseFile(HWND hEditControl, const wchar_t* filter, const wchar_t* title) {
+void BrowseFile(HWND hEdit, const wchar_t* filter, const wchar_t* title) {
     OPENFILENAMEW ofn = { 0 };
-    wchar_t fileName[MAX_PATH] = { 0 };
+    wchar_t fileName[MAX_PATH] = L"";
     
     ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = hMainWindow;
+    ofn.hwndOwner = g_hMainWnd;
     ofn.lpstrFilter = filter;
     ofn.lpstrFile = fileName;
     ofn.nMaxFile = MAX_PATH;
@@ -484,659 +929,190 @@ void BrowseFile(HWND hEditControl, const wchar_t* filter, const wchar_t* title) 
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
     
     if (GetOpenFileNameW(&ofn)) {
-        SetWindowTextW(hEditControl, fileName);
+        SetWindowTextW(hEdit, fileName);
     }
 }
 
-// Создание вкладок
-void CreateTabs(HWND hwnd) {
-    hTabControl = CreateWindowW(WC_TABCONTROLW, L"", 
-                                WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
-                                10, 228, 560, 185, hwnd, (HMENU)IDC_TAB, NULL, NULL);
-    
-    TCITEMW tie = {0};
-    tie.mask = TCIF_TEXT;
-    
-    tie.pszText = g_TabName1;
-    TabCtrl_InsertItem(hTabControl, 0, &tie);
-    
-    tie.pszText = g_TabName2;
-    TabCtrl_InsertItem(hTabControl, 1, &tie);
-    
-    tie.pszText = g_TabName3;
-    TabCtrl_InsertItem(hTabControl, 2, &tie);
-}
-
-// Создание контента вкладок
-void CreateTabContent(HWND hwnd) {
-    HFONT hFont = CreateFontW(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                             CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-    
-    int tabX = 25, tabY = 258;
-    
-    // === ВКЛАДКА 1: Основные опции ===
-    hChkIgnoreConfig = CreateWindowW(L"BUTTON", L"Игнорировать конфиг", 
-                                     WS_CHILD | BS_AUTOCHECKBOX, tabX, tabY, 220, 20, hwnd, 
-                                     (HMENU)IDC_CHK_IGNORE_CONFIG, NULL, NULL);
-    
-    hChkLiveFromStart = CreateWindowW(L"BUTTON", L"Прямой эфир с начала", 
-                                      WS_CHILD | BS_AUTOCHECKBOX, tabX, tabY + 25, 220, 20, hwnd, 
-                                      (HMENU)IDC_CHK_LIVE_FROM_START, NULL, NULL);
-    
-    hChkSkipDownload = CreateWindowW(L"BUTTON", L"Пропустить загрузку", 
-                                     WS_CHILD | BS_AUTOCHECKBOX, tabX, tabY + 50, 220, 20, hwnd, 
-                                     (HMENU)IDC_CHK_SKIP_DOWNLOAD, NULL, NULL);
-    
-    hChkSaveJson = CreateWindowW(L"BUTTON", L"Сохранить JSON", 
-                                 WS_CHILD | BS_AUTOCHECKBOX, tabX, tabY + 75, 200, 20, hwnd, 
-                                 (HMENU)IDC_CHK_SAVE_JSON, NULL, NULL);
-    
-    hChkListFormats = CreateWindowW(L"BUTTON", L"Список форматов", 
-                                    WS_CHILD | BS_AUTOCHECKBOX, tabX, tabY + 100, 200, 20, hwnd, 
-                                    (HMENU)IDC_CHK_LIST_FORMATS, NULL, NULL);
-    
-    // Правая колонка вкладки 1
-    hLblProxy = CreateWindowW(L"STATIC", L"Proxy URL:", WS_CHILD | SS_LEFT, 
-                              tabX + 250, tabY, 100, 18, hwnd, NULL, NULL, NULL);
-    hEditProxy = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | ES_AUTOHSCROLL,
-                                 tabX + 250, tabY + 20, 260, 22, hwnd, NULL, NULL, NULL);
-    
-    hLblWait = CreateWindowW(L"STATIC", L"Ожидание видео (сек):", WS_CHILD | SS_LEFT, 
-                             tabX + 250, tabY + 50, 150, 18, hwnd, NULL, NULL, NULL);
-    hEditWaitForVideo = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | ES_AUTOHSCROLL,
-                                        tabX + 250, tabY + 70, 260, 22, hwnd, NULL, NULL, NULL);
-    
-    hLblConfigLoc = CreateWindowW(L"STATIC", L"Конфиг по пути:", WS_CHILD | SS_LEFT, 
-                                  tabX + 250, tabY + 100, 150, 18, hwnd, NULL, NULL, NULL);
-    hEditConfigLocations = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | ES_AUTOHSCROLL,
-                                           tabX + 250, tabY + 120, 260, 22, hwnd, NULL, NULL, NULL);
-    
-    // === ВКЛАДКА 2: Встраивание / Конвертация ===
-    hChkEmbedSubs = CreateWindowW(L"BUTTON", L"Встроить субтитры", 
-                                  WS_CHILD | BS_AUTOCHECKBOX, tabX, tabY, 200, 20, hwnd, 
-                                  (HMENU)IDC_CHK_EMBED_SUBS, NULL, NULL);
-    
-    hChkEmbedThumbnail = CreateWindowW(L"BUTTON", L"Встроить превью", 
-                                       WS_CHILD | BS_AUTOCHECKBOX, tabX, tabY + 25, 200, 20, hwnd, 
-                                       (HMENU)IDC_CHK_EMBED_THUMBNAIL, NULL, NULL);
-    
-    hChkEmbedMetadata = CreateWindowW(L"BUTTON", L"Встроить метаданные", 
-                                      WS_CHILD | BS_AUTOCHECKBOX, tabX, tabY + 50, 200, 20, hwnd, 
-                                      (HMENU)IDC_CHK_EMBED_METADATA, NULL, NULL);
-    
-    hChkEmbedChapters = CreateWindowW(L"BUTTON", L"Встроить главы", 
-                                      WS_CHILD | BS_AUTOCHECKBOX, tabX, tabY + 75, 200, 20, hwnd, 
-                                      (HMENU)IDC_CHK_EMBED_CHAPTERS, NULL, NULL);
-    
-    hChkSplitChapters = CreateWindowW(L"BUTTON", L"Разделить по главам", 
-                                      WS_CHILD | BS_AUTOCHECKBOX, tabX, tabY + 100, 200, 20, hwnd, 
-                                      (HMENU)IDC_CHK_SPLIT_CHAPTERS, NULL, NULL);
-    
-    hChkCheckFormats = CreateWindowW(L"BUTTON", L"Проверить форматы", 
-                                     WS_CHILD | BS_AUTOCHECKBOX, tabX, tabY + 125, 200, 20, hwnd, 
-                                     (HMENU)IDC_CHK_CHECK_FORMATS, NULL, NULL);
-    
-    // Правая колонка вкладки 2
-    hLblConvSubs = CreateWindowW(L"STATIC", L"Конвертировать субтитры:", WS_CHILD | SS_LEFT, 
-                                 tabX + 250, tabY, 200, 18, hwnd, NULL, NULL, NULL);
-    hEditConvertSubs = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | CBS_DROPDOWNLIST,
-                                       tabX + 250, tabY + 20, 260, 200, hwnd, NULL, NULL, NULL);
-    SendMessageW(hEditConvertSubs, CB_ADDSTRING, 0, (LPARAM)L"Не конвертировать");
-    SendMessageW(hEditConvertSubs, CB_ADDSTRING, 0, (LPARAM)L"srt");
-    SendMessageW(hEditConvertSubs, CB_ADDSTRING, 0, (LPARAM)L"ass");
-    SendMessageW(hEditConvertSubs, CB_ADDSTRING, 0, (LPARAM)L"vtt");
-    SendMessageW(hEditConvertSubs, CB_ADDSTRING, 0, (LPARAM)L"lrc");
-    SendMessage(hEditConvertSubs, CB_SETCURSEL, 0, 0);
-    
-    hLblConvThumb = CreateWindowW(L"STATIC", L"Конвертировать превью:", WS_CHILD | SS_LEFT, 
-                                  tabX + 250, tabY + 50, 200, 18, hwnd, NULL, NULL, NULL);
-    hEditConvertThumbnails = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | CBS_DROPDOWNLIST,
-                                             tabX + 250, tabY + 70, 260, 200, hwnd, NULL, NULL, NULL);
-    SendMessageW(hEditConvertThumbnails, CB_ADDSTRING, 0, (LPARAM)L"Не конвертировать");
-    SendMessageW(hEditConvertThumbnails, CB_ADDSTRING, 0, (LPARAM)L"jpg");
-    SendMessageW(hEditConvertThumbnails, CB_ADDSTRING, 0, (LPARAM)L"png");
-    SendMessageW(hEditConvertThumbnails, CB_ADDSTRING, 0, (LPARAM)L"webp");
-    SendMessage(hEditConvertThumbnails, CB_SETCURSEL, 0, 0);
-    
-    hLblMerge = CreateWindowW(L"STATIC", L"Формат слияния:", WS_CHILD | SS_LEFT, 
-                              tabX + 250, tabY + 100, 150, 18, hwnd, NULL, NULL, NULL);
-    hEditMergeFormat = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | CBS_DROPDOWNLIST,
-                                       tabX + 250, tabY + 120, 260, 200, hwnd, NULL, NULL, NULL);
-    SendMessageW(hEditMergeFormat, CB_ADDSTRING, 0, (LPARAM)L"Автоматически");
-    SendMessageW(hEditMergeFormat, CB_ADDSTRING, 0, (LPARAM)L"mp4");
-    SendMessageW(hEditMergeFormat, CB_ADDSTRING, 0, (LPARAM)L"mkv");
-    SendMessageW(hEditMergeFormat, CB_ADDSTRING, 0, (LPARAM)L"webm");
-    SendMessageW(hEditMergeFormat, CB_ADDSTRING, 0, (LPARAM)L"avi");
-    SendMessageW(hEditMergeFormat, CB_ADDSTRING, 0, (LPARAM)L"flv");
-    SendMessageW(hEditMergeFormat, CB_ADDSTRING, 0, (LPARAM)L"mov");
-    SendMessage(hEditMergeFormat, CB_SETCURSEL, 0, 0);
-    
-    // === ВКЛАДКА 3: Продвинутые ===
-    hLblSort = CreateWindowW(L"STATIC", L"Сортировка форматов (-S):", WS_CHILD | SS_LEFT, 
-                             tabX, tabY, 200, 18, hwnd, NULL, NULL, NULL);
-    hEditFormatSort = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | ES_AUTOHSCROLL,
-                                      tabX, tabY + 20, 240, 22, hwnd, NULL, NULL, NULL);
-    
-    hLblExtractor = CreateWindowW(L"STATIC", L"Extractor Args:", WS_CHILD | SS_LEFT, 
-                                  tabX, tabY + 50, 150, 18, hwnd, NULL, NULL, NULL);
-    hEditExtractorArgs = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | CBS_DROPDOWN,
-                                         tabX, tabY + 70, 240, 200, hwnd, NULL, NULL, NULL);
-    SendMessageW(hEditExtractorArgs, CB_ADDSTRING, 0, (LPARAM)L"youtube:player_client=web,mweb");
-    SendMessageW(hEditExtractorArgs, CB_ADDSTRING, 0, (LPARAM)L"youtube:player_client=android");
-    SendMessageW(hEditExtractorArgs, CB_ADDSTRING, 0, (LPARAM)L"youtube:player_client=ios");
-    SendMessageW(hEditExtractorArgs, CB_ADDSTRING, 0, (LPARAM)L"youtube:lang=ru");
-    
-    hLblCookies = CreateWindowW(L"STATIC", L"Cookies файл:", WS_CHILD | SS_LEFT, 
-                                tabX, tabY + 100, 100, 18, hwnd, NULL, NULL, NULL);
-    hEditCookiesFile = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | ES_AUTOHSCROLL | ES_READONLY,
-                                       tabX, tabY + 120, 200, 22, hwnd, NULL, NULL, NULL);
-    hBtnBrowseCookies = CreateWindowW(L"BUTTON", L"...", WS_CHILD | BS_PUSHBUTTON,
-                                      tabX + 205, tabY + 120, 35, 22, hwnd, (HMENU)IDC_BROWSE_COOKIES, NULL, NULL);
-    
-    // Правая колонка вкладки 3
-    HWND hLblCookiesBrowser = CreateWindowW(L"STATIC", L"Cookies из браузера:", WS_CHILD | SS_LEFT, 
-                                            tabX + 270, tabY, 200, 18, hwnd, NULL, NULL, NULL);
-    hEditCookiesFromBrowser = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | CBS_DROPDOWNLIST,
-                                              tabX + 270, tabY + 20, 240, 200, hwnd, NULL, NULL, NULL);
-    SendMessageW(hEditCookiesFromBrowser, CB_ADDSTRING, 0, (LPARAM)L"Не использовать");
-    SendMessageW(hEditCookiesFromBrowser, CB_ADDSTRING, 0, (LPARAM)L"chrome");
-    SendMessageW(hEditCookiesFromBrowser, CB_ADDSTRING, 0, (LPARAM)L"firefox");
-    SendMessageW(hEditCookiesFromBrowser, CB_ADDSTRING, 0, (LPARAM)L"edge");
-    SendMessageW(hEditCookiesFromBrowser, CB_ADDSTRING, 0, (LPARAM)L"opera");
-    SendMessageW(hEditCookiesFromBrowser, CB_ADDSTRING, 0, (LPARAM)L"brave");
-    SendMessageW(hEditCookiesFromBrowser, CB_ADDSTRING, 0, (LPARAM)L"safari");
-    SendMessage(hEditCookiesFromBrowser, CB_SETCURSEL, 0, 0);
-    
-    HWND hLblDownloader = CreateWindowW(L"STATIC", L"Downloader:", WS_CHILD | SS_LEFT, 
-                                        tabX + 270, tabY + 50, 150, 18, hwnd, NULL, NULL, NULL);
-    hEditDownloader = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | CBS_DROPDOWNLIST,
-                                      tabX + 270, tabY + 70, 240, 200, hwnd, NULL, NULL, NULL);
-    SendMessageW(hEditDownloader, CB_ADDSTRING, 0, (LPARAM)L"По умолчанию");
-    SendMessageW(hEditDownloader, CB_ADDSTRING, 0, (LPARAM)L"aria2c");
-    SendMessageW(hEditDownloader, CB_ADDSTRING, 0, (LPARAM)L"curl");
-    SendMessageW(hEditDownloader, CB_ADDSTRING, 0, (LPARAM)L"wget");
-    SendMessageW(hEditDownloader, CB_ADDSTRING, 0, (LPARAM)L"ffmpeg");
-    SendMessage(hEditDownloader, CB_SETCURSEL, 0, 0);
-    
-    hChkNoCache = CreateWindowW(L"BUTTON", L"Отключить кэш", 
-                                WS_CHILD | BS_AUTOCHECKBOX, tabX + 270, tabY + 100, 150, 20, hwnd, 
-                                (HMENU)IDC_CHK_NO_CACHE, NULL, NULL);
-    
-    // Скрытые поля
-    hEditDownloaderArgs = CreateWindowW(L"EDIT", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
-    hEditBatchFile = CreateWindowW(L"EDIT", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
-    hEditOutputTemplate = CreateWindowW(L"EDIT", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
-    hEditCacheDir = CreateWindowW(L"EDIT", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
-    hEditRemoveChapters = CreateWindowW(L"EDIT", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
-    hChkForceKeyframes = CreateWindowW(L"BUTTON", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
-    hEditDownloadSections = CreateWindowW(L"EDIT", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
-    hLblSections = CreateWindowW(L"STATIC", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
-    hLblConvSubsHint = CreateWindowW(L"STATIC", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
-    hLblConvThumbHint = CreateWindowW(L"STATIC", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
-    hLblMergeHint = CreateWindowW(L"STATIC", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
-    hLblHeaders = CreateWindowW(L"STATIC", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
-    hEditAddHeaders = CreateWindowW(L"EDIT", L"", WS_CHILD, 0, 0, 0, 0, hwnd, NULL, NULL, NULL);
-    
-    // Установка шрифта
-    EnumChildWindows(hwnd, [](HWND hwndChild, LPARAM lParam) -> BOOL {
-        if (hwndChild != hLogEdit) {
-            SendMessage(hwndChild, WM_SETFONT, (WPARAM)lParam, TRUE);
-        }
-        return TRUE;
-    }, (LPARAM)hFont);
-}
-
-
-void SwitchTab(int tabIndex) {
-    // Скрыть все
-    ShowWindow(hChkIgnoreConfig, SW_HIDE);
-    ShowWindow(hChkLiveFromStart, SW_HIDE);
-    ShowWindow(hChkSkipDownload, SW_HIDE);
-    ShowWindow(hChkSaveJson, SW_HIDE);
-    ShowWindow(hChkListFormats, SW_HIDE);
-    ShowWindow(hEditProxy, SW_HIDE);
-    ShowWindow(hEditWaitForVideo, SW_HIDE);
-    ShowWindow(hEditConfigLocations, SW_HIDE);
-    ShowWindow(hLblProxy, SW_HIDE);
-    ShowWindow(hLblWait, SW_HIDE);
-    
-    ShowWindow(hChkEmbedSubs, SW_HIDE);
-    ShowWindow(hChkEmbedThumbnail, SW_HIDE);
-    ShowWindow(hChkEmbedMetadata, SW_HIDE);
-    ShowWindow(hChkEmbedChapters, SW_HIDE);
-    ShowWindow(hChkSplitChapters, SW_HIDE);
-    ShowWindow(hChkCheckFormats, SW_HIDE);
-    ShowWindow(hEditConvertSubs, SW_HIDE);
-    ShowWindow(hEditConvertThumbnails, SW_HIDE);
-    ShowWindow(hEditMergeFormat, SW_HIDE);
-    ShowWindow(hLblConvSubs, SW_HIDE);
-    ShowWindow(hLblConvThumb, SW_HIDE);
-    ShowWindow(hLblMerge, SW_HIDE);
-    
-    ShowWindow(hEditFormatSort, SW_HIDE);
-    ShowWindow(hEditExtractorArgs, SW_HIDE);
-    ShowWindow(hEditCookiesFile, SW_HIDE);
-    ShowWindow(hEditCookiesFromBrowser, SW_HIDE);
-    ShowWindow(hEditDownloader, SW_HIDE);
-    ShowWindow(hBtnBrowseCookies, SW_HIDE);
-    ShowWindow(hChkNoCache, SW_HIDE);
-    ShowWindow(hLblSort, SW_HIDE);
-    ShowWindow(hLblExtractor, SW_HIDE);
-    ShowWindow(hLblCookies, SW_HIDE);
-    
-    // Скрыть метки для вкладки 1
-    HWND hChild = GetWindow(hMainWindow, GW_CHILD);
-    while (hChild) {
-        wchar_t className[256];
-        GetClassNameW(hChild, className, 256);
-        if (wcscmp(className, L"STATIC") == 0) {
-            RECT rect;
-            GetWindowRect(hChild, &rect);
-            POINT pt = { rect.left, rect.top };
-            ScreenToClient(hMainWindow, &pt);
-            if (pt.y > 250 && pt.y < 420) {
-                ShowWindow(hChild, SW_HIDE);
-            }
-        }
-        hChild = GetWindow(hChild, GW_HWNDNEXT);
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    switch (message) {
+    case WM_CREATE: {
+        // Создание TabControl
+        g_hTabControl = CreateWindowExW(0, WC_TABCONTROLW, L"",
+                                       WS_CHILD | WS_VISIBLE | WS_CLIPTABSTOP,
+                                       10, 10, 780, 450, hWnd, (HMENU)IDC_TAB_CONTROL, g_hInst, NULL);
+        
+        TCITEMW tie;
+        tie.mask = TCIF_TEXT;
+        
+        tie.pszText = (LPWSTR)L"Основное";
+        TabCtrl_InsertItem(g_hTabControl, 0, &tie);
+        
+        tie.pszText = (LPWSTR)L"Сеть";
+        TabCtrl_InsertItem(g_hTabControl, 1, &tie);
+        
+        tie.pszText = (LPWSTR)L"Загрузчик";
+        TabCtrl_InsertItem(g_hTabControl, 2, &tie);
+        
+        tie.pszText = (LPWSTR)L"Обработка";
+        TabCtrl_InsertItem(g_hTabControl, 3, &tie);
+        
+        tie.pszText = (LPWSTR)L"Дополнительно";
+        TabCtrl_InsertItem(g_hTabControl, 4, &tie);
+        
+        // Создание панелей вкладок
+        g_controls.hTabBasic = CreateTabPanel(g_hTabControl, IDC_TAB_BASIC);
+        g_controls.hTabNetwork = CreateTabPanel(g_hTabControl, IDC_TAB_NETWORK);
+        g_controls.hTabDownloader = CreateTabPanel(g_hTabControl, IDC_TAB_DOWNLOADER);
+        g_controls.hTabProcessing = CreateTabPanel(g_hTabControl, IDC_TAB_PROCESSING);
+        g_controls.hTabAdvanced = CreateTabPanel(g_hTabControl, IDC_TAB_ADVANCED);
+        
+        CreateBasicTab(g_controls.hTabBasic);
+        CreateNetworkTab(g_controls.hTabNetwork);
+        CreateDownloaderTab(g_controls.hTabDownloader);
+        CreateProcessingTab(g_controls.hTabProcessing);
+        CreateAdvancedTab(g_controls.hTabAdvanced);
+        
+        ShowTab(0);
+        
+        // Progress bar
+        g_hProgressBar = CreateWindowExW(0, PROGRESS_CLASSW, NULL,
+                                        WS_CHILD | WS_VISIBLE | PBS_SMOOTH,
+                                        10, 470, 780, 25, hWnd, (HMENU)IDC_PROGRESS_BAR, g_hInst, NULL);
+        SendMessageW(g_hProgressBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
+        SendMessageW(g_hProgressBar, PBM_SETSTEP, 1, 0);
+        
+        // Toggle output button
+        g_hToggleOutputBtn = CreateWindowExW(0, L"Button", L"Показать вывод ▼",
+                                            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+                                            10, 500, 150, 25, hWnd, (HMENU)IDC_TOGGLE_OUTPUT_BTN, g_hInst, NULL);
+        
+        // Output edit
+        g_hOutputEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"Edit", L"",
+                                       WS_CHILD | WS_VSCROLL | WS_HSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
+                                       10, 530, 780, 150, hWnd, (HMENU)IDC_OUTPUT_EDIT, g_hInst, NULL);
+        
+        // Download button
+        g_hDownloadBtn = CreateWindowExW(0, L"Button", L"Скачать",
+                                        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+                                        680, 500, 110, 30, hWnd, (HMENU)IDC_DOWNLOAD_BTN, g_hInst, NULL);
+        
+        LoadSettings();
+        UpdateControlsFromSettings();
+        
+        RECT rc;
+        GetClientRect(hWnd, &rc);
+        ResizeControls(rc.right, rc.bottom);
+        break;
     }
     
-    // Показать нужные
-    switch (tabIndex) {
-        case 0: // Основные
-            ShowWindow(hChkIgnoreConfig, SW_SHOW);
-            ShowWindow(hChkLiveFromStart, SW_SHOW);
-            ShowWindow(hChkSkipDownload, SW_SHOW);
-            ShowWindow(hChkSaveJson, SW_SHOW);
-            ShowWindow(hChkListFormats, SW_SHOW);
-            ShowWindow(hEditProxy, SW_SHOW);
-            ShowWindow(hEditWaitForVideo, SW_SHOW);
-            ShowWindow(hEditConfigLocations, SW_SHOW);
-            ShowWindow(hLblProxy, SW_SHOW);
-            ShowWindow(hLblWait, SW_SHOW);
-            
-            // Показать метку для конфига
-            hChild = GetWindow(hMainWindow, GW_CHILD);
-            while (hChild) {
-                wchar_t className[256], text[256];
-                GetClassNameW(hChild, className, 256);
-                if (wcscmp(className, L"STATIC") == 0) {
-                    GetWindowTextW(hChild, text, 256);
-                    if (wcsstr(text, L"Конфиг") || wcsstr(text, L"Proxy") || wcsstr(text, L"Ожидание")) {
-                        ShowWindow(hChild, SW_SHOW);
-                    }
-                }
-                hChild = GetWindow(hChild, GW_HWNDNEXT);
-            }
-            break;
-            
-        case 1: // Встраивание
-            ShowWindow(hChkEmbedSubs, SW_SHOW);
-            ShowWindow(hChkEmbedThumbnail, SW_SHOW);
-            ShowWindow(hChkEmbedMetadata, SW_SHOW);
-            ShowWindow(hChkEmbedChapters, SW_SHOW);
-            ShowWindow(hChkSplitChapters, SW_SHOW);
-            ShowWindow(hChkCheckFormats, SW_SHOW);
-            ShowWindow(hEditConvertSubs, SW_SHOW);
-            ShowWindow(hEditConvertThumbnails, SW_SHOW);
-            ShowWindow(hEditMergeFormat, SW_SHOW);
-            ShowWindow(hLblConvSubs, SW_SHOW);
-            ShowWindow(hLblConvThumb, SW_SHOW);
-            ShowWindow(hLblMerge, SW_SHOW);
-            break;
-            
-        case 2: // Продвинутые
-            ShowWindow(hEditFormatSort, SW_SHOW);
-            ShowWindow(hEditExtractorArgs, SW_SHOW);
-            ShowWindow(hEditCookiesFile, SW_SHOW);
-            ShowWindow(hEditCookiesFromBrowser, SW_SHOW);
-            ShowWindow(hEditDownloader, SW_SHOW);
-            ShowWindow(hBtnBrowseCookies, SW_SHOW);
-            ShowWindow(hChkNoCache, SW_SHOW);
-            ShowWindow(hLblSort, SW_SHOW);
-            ShowWindow(hLblExtractor, SW_SHOW);
-            ShowWindow(hLblCookies, SW_SHOW);
-            
-            // Показать метки
-            hChild = GetWindow(hMainWindow, GW_CHILD);
-            while (hChild) {
-                wchar_t className[256], text[256];
-                GetClassNameW(hChild, className, 256);
-                if (wcscmp(className, L"STATIC") == 0) {
-                    GetWindowTextW(hChild, text, 256);
-                    if (wcsstr(text, L"Cookies") || wcsstr(text, L"Downloader") || wcsstr(text, L"Сортировка") || wcsstr(text, L"Extractor")) {
-                        ShowWindow(hChild, SW_SHOW);
-                    }
-                }
-                hChild = GetWindow(hChild, GW_HWNDNEXT);
-            }
-            break;
+    case WM_NOTIFY: {
+        NMHDR* pNmhdr = (NMHDR*)lParam;
+        if (pNmhdr->idFrom == IDC_TAB_CONTROL && pNmhdr->code == TCN_SELCHANGE) {
+            int index = TabCtrl_GetCurSel(g_hTabControl);
+            ShowTab(index);
+        }
+        break;
     }
-}
     
-    
-
-// Обработчик сообщений
-LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    switch (uMsg) {
-        case WM_CREATE:
-        {
-            HFONT hFont = CreateFontW(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                     CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-            
-            // Пресеты
-            HWND hGroupPreset = CreateWindowW(L"BUTTON", L"Пресеты", 
-                                             WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
-                                             10, 5, 560, 50, hwnd, NULL, NULL, NULL);
-            SendMessage(hGroupPreset, WM_SETFONT, (WPARAM)hFont, TRUE);
-            
-            CreateWindowW(L"STATIC", L"Пресет:", WS_VISIBLE | WS_CHILD,
-                         25, 25, 60, 20, hwnd, NULL, NULL, NULL);
-            hPresetCombo = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", 
-                                          WS_VISIBLE | WS_CHILD | WS_TABSTOP | CBS_DROPDOWNLIST,
-                                          90, 23, 280, 200, hwnd, (HMENU)IDC_PRESET_COMBO, NULL, NULL);
-            
-            hBtnSavePreset = CreateWindowW(L"BUTTON", L"Сохранить", WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
-                                          375, 23, 90, 24, hwnd, (HMENU)IDC_SAVE_PRESET, NULL, NULL);
-            
-            hBtnDeletePreset = CreateWindowW(L"BUTTON", L"Удалить", WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
-                                            470, 23, 85, 24, hwnd, (HMENU)IDC_DELETE_PRESET, NULL, NULL);
-            
-            // GroupBox для основных настроек
-            HWND hGroupMain = CreateWindowW(L"BUTTON", L"Основные настройки", 
-                                           WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
-                                           10, 60, 560, 160, hwnd, NULL, NULL, NULL);
-            SendMessage(hGroupMain, WM_SETFONT, (WPARAM)hFont, TRUE);
-            
-            // URL
-            CreateWindowW(L"STATIC", L"URL видео:", WS_VISIBLE | WS_CHILD,
-                         25, 80, 100, 20, hwnd, NULL, NULL, NULL);
-            hUrlEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", 
-                                      WS_VISIBLE | WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
-                                      25, 103, 530, 24, hwnd, NULL, NULL, NULL);
-            
-            // Путь сохранения
-            CreateWindowW(L"STATIC", L"Папка сохранения:", WS_VISIBLE | WS_CHILD,
-                         25, 135, 150, 20, hwnd, NULL, NULL, NULL);
-            hOutputEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", 
-                                         WS_VISIBLE | WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL | ES_READONLY,
-                                         25, 158, 445, 24, hwnd, NULL, NULL, NULL);
-            hBrowseBtn = CreateWindowW(L"BUTTON", L"Обзор...", WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
-                                       478, 158, 77, 24, hwnd, (HMENU)IDC_BROWSE, NULL, NULL);
-            
-            // Качество и формат
-            CreateWindowW(L"STATIC", L"Качество:", WS_VISIBLE | WS_CHILD,
-                         25, 190, 100, 20, hwnd, NULL, NULL, NULL);
-            hQualityCombo = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", 
-                                           WS_VISIBLE | WS_CHILD | WS_TABSTOP | CBS_DROPDOWNLIST,
-                                           90, 188, 180, 200, hwnd, NULL, NULL, NULL);
-            SendMessageW(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"4K (2160p)");
-            SendMessageW(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"1440p");
-            SendMessageW(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"1080p");
-            SendMessageW(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"720p");
-            SendMessageW(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"480p");
-            SendMessageW(hQualityCombo, CB_ADDSTRING, 0, (LPARAM)L"Лучшее доступное");
-            SendMessage(hQualityCombo, CB_SETCURSEL, 2, 0);
-            
-            CreateWindowW(L"STATIC", L"Формат:", WS_VISIBLE | WS_CHILD,
-                         290, 190, 100, 20, hwnd, NULL, NULL, NULL);
-            hFormatCombo = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", 
-                                          WS_VISIBLE | WS_CHILD | WS_TABSTOP | CBS_DROPDOWNLIST,
-                                          350, 188, 205, 200, hwnd, NULL, NULL, NULL);
-            SendMessageW(hFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"Видео + Аудио");
-            SendMessageW(hFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"Только аудио (MP3)");
-            SendMessageW(hFormatCombo, CB_ADDSTRING, 0, (LPARAM)L"Только видео");
-            SendMessage(hFormatCombo, CB_SETCURSEL, 0, 0);
-            
-            // Создание вкладок
-            CreateTabs(hwnd);
-            CreateTabContent(hwnd);
-            SwitchTab(0); // Показать первую вкладку
-            
-            // Кнопка загрузки
-            hDownloadBtn = CreateWindowW(L"BUTTON", L"Скачать", 
-                                        WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
-                                        10, 423, 560, 40, hwnd, (HMENU)IDC_DOWNLOAD, NULL, NULL);
-            
-            // Прогресс бар
-            hProgressBar = CreateWindowExW(0, PROGRESS_CLASSW, NULL,
-                                          WS_VISIBLE | WS_CHILD | PBS_SMOOTH,
-                                          10, 473, 560, 28, hwnd, NULL, NULL, NULL);
-            SendMessage(hProgressBar, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
-            SendMessage(hProgressBar, PBM_SETPOS, 0, 0);
-            
-            // Статус
-            hStatusText = CreateWindowW(L"STATIC", L"Готов к загрузке", 
-                                       WS_VISIBLE | WS_CHILD | SS_CENTER,
-                                       10, 510, 560, 22, hwnd, NULL, NULL, NULL);
-            
-            // Кнопка показать/скрыть лог
-            hToggleLogBtn = CreateWindowW(L"BUTTON", L"▼ Показать лог", 
-                                         WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
-                                         10, 540, 560, 28, hwnd, (HMENU)IDC_TOGGLE_LOG, NULL, NULL);
-            
-            // Лог (скрыт по умолчанию)
-            hLogEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", 
-                                      WS_CHILD | WS_VSCROLL | WS_HSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_READONLY,
-                                      10, 578, 560, 140, hwnd, NULL, NULL, NULL);
-            
-            // Установка моноширинного шрифта для лога
-            HFONT hLogFont = CreateFontW(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                        CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
-            SendMessage(hLogEdit, WM_SETFONT, (WPARAM)hLogFont, TRUE);
-            
-            // Установка шрифта для всех элементов кроме лога
-            EnumChildWindows(hwnd, [](HWND hwndChild, LPARAM lParam) -> BOOL {
-                if (hwndChild != hLogEdit) {
-                    SendMessage(hwndChild, WM_SETFONT, (WPARAM)lParam, TRUE);
-                }
-                return TRUE;
-            }, (LPARAM)hFont);
-            
-            // Загрузка настроек и пресетов
-            settings.Load();
-            LoadSettingsToUI();
-            LoadPresetsToCombo();
-            
+    case WM_COMMAND: {
+        int wmId = LOWORD(wParam);
+        switch (wmId) {
+        case IDC_BROWSE_BTN:
+            BrowseFolder(g_controls.hSavePathEdit);
+            break;
+        case IDC_COOKIES_FILE_BROWSE_BTN:
+            BrowseFile(g_controls.hCookiesFileEdit, L"Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0", L"Выберите файл cookies");
+            break;
+        case IDC_BATCH_FILE_BROWSE_BTN:
+            BrowseFile(g_controls.hBatchFileEdit, L"Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0", L"Выберите batch файл");
+            break;
+        case IDC_TOGGLE_OUTPUT_BTN:
+            ToggleOutput();
+            break;
+        case IDC_DOWNLOAD_BTN:
+            StartDownload();
             break;
         }
-        
-        case WM_NOTIFY:
-        {
-            LPNMHDR pnmhdr = (LPNMHDR)lParam;
-            if (pnmhdr->idFrom == IDC_TAB && pnmhdr->code == TCN_SELCHANGE) {
-                int tabIndex = TabCtrl_GetCurSel(hTabControl);
-                SwitchTab(tabIndex);
-            }
-            break;
-        }
-        
-        case WM_COMMAND:
-            if (LOWORD(wParam) == IDC_DOWNLOAD && HIWORD(wParam) == BN_CLICKED) {
-                if (!isDownloading) {
-                    isDownloading = true;
-                    EnableWindow(hDownloadBtn, FALSE);
-                    SetWindowTextW(hDownloadBtn, L"Загрузка...");
-                    
-                    // Сохранение настроек перед загрузкой
-                    SaveSettingsFromUI();
-                    settings.Save();
-                    
-                    std::thread(DownloadThread).detach();
-                }
-            }
-            else if (LOWORD(wParam) == IDC_BROWSE && HIWORD(wParam) == BN_CLICKED) {
-                BrowseFolder();
-            }
-            else if (LOWORD(wParam) == IDC_TOGGLE_LOG && HIWORD(wParam) == BN_CLICKED) {
-                ToggleLog();
-            }
-            else if (LOWORD(wParam) == IDC_PRESET_COMBO && HIWORD(wParam) == CBN_SELCHANGE) {
-                int idx = SendMessage(hPresetCombo, CB_GETCURSEL, 0, 0);
-                if (idx > 0) {
-                    wchar_t presetName[256];
-                    SendMessageW(hPresetCombo, CB_GETLBTEXT, idx, (LPARAM)presetName);
-                    currentPreset = presetName;
-                    
-                    Settings presetSettings;
-                    presetSettings.Load(presetName);
-                    settings = presetSettings;
-                    LoadSettingsToUI();
-                } else {
-                    currentPreset.clear();
-                    settings.Load();
-                    LoadSettingsToUI();
-                }
-            }
-            else if (LOWORD(wParam) == IDC_SAVE_PRESET && HIWORD(wParam) == BN_CLICKED) {
-    // Простой ввод через MessageBox + временный файл
-    wchar_t inputFile[] = L"preset_input.vbs";
-    wchar_t outputFile[] = L"preset_name.txt";
-    
-    // Создаем VBScript для InputBox
-    FILE* f = _wfopen(inputFile, L"w");
-    if (f) {
-        fwprintf(f, L"Set objFSO = CreateObject(\"Scripting.FileSystemObject\")\n");
-        fwprintf(f, L"strName = InputBox(\"Введите имя пресета:\", \"Сохранить пресет\")\n");
-        fwprintf(f, L"If strName <> \"\" Then\n");
-        fwprintf(f, L"  Set objFile = objFSO.CreateTextFile(\"%s\", True, True)\n", outputFile);
-        fwprintf(f, L"  objFile.Write strName\n");
-        fwprintf(f, L"  objFile.Close\n");
-        fwprintf(f, L"End If\n");
-        fclose(f);
-        
-        // Запускаем скрипт
-        wchar_t cmd[512];
-        swprintf_s(cmd, 512, L"cscript //nologo \"%s\"", inputFile);
-        _wsystem(cmd);
-        
-        // Читаем результат
-        wchar_t presetName[256] = L"";
-        FILE* fOut = _wfopen(outputFile, L"r, ccs=UTF-8");
-        if (fOut) {
-            fgetws(presetName, 256, fOut);
-            fclose(fOut);
-            DeleteFileW(outputFile);
-            
-            if (wcslen(presetName) > 0) {
-                // Убираем BOM если есть
-                wchar_t* namePtr = presetName;
-                if (presetName[0] == 0xFEFF) namePtr++;
-                
-                SaveSettingsFromUI();
-                settings.Save(namePtr);
-                LoadPresetsToCombo();
-                
-                int count = SendMessage(hPresetCombo, CB_GETCOUNT, 0, 0);
-                for (int i = 1; i < count; i++) {
-                    wchar_t text[256];
-                    SendMessageW(hPresetCombo, CB_GETLBTEXT, i, (LPARAM)text);
-                    if (wcscmp(text, namePtr) == 0) {
-                        SendMessage(hPresetCombo, CB_SETCURSEL, i, 0);
-                        break;
-                    }
-                }
-                
-                MessageBoxW(hwnd, L"Пресет сохранен!", L"Успех", MB_ICONINFORMATION);
-            }
-        }
-        
-        DeleteFileW(inputFile);
+        break;
     }
-}
-            else if (LOWORD(wParam) == IDC_DELETE_PRESET && HIWORD(wParam) == BN_CLICKED) {
-                int idx = SendMessage(hPresetCombo, CB_GETCURSEL, 0, 0);
-                if (idx > 0) {
-                    wchar_t presetName[256];
-                    SendMessageW(hPresetCombo, CB_GETLBTEXT, idx, (LPARAM)presetName);
-                    
-                    std::wstring msg = L"Удалить пресет \"" + std::wstring(presetName) + L"\"?";
-                    if (MessageBoxW(hwnd, msg.c_str(), L"Подтверждение", MB_YESNO | MB_ICONQUESTION) == IDYES) {
-                        settings.DeleteProfile(presetName);
-                        LoadPresetsToCombo();
-                        MessageBoxW(hwnd, L"Пресет удален!", L"Успех", MB_ICONINFORMATION);
-                    }
-                }
-            }
-            else if (LOWORD(wParam) == IDC_BROWSE_COOKIES && HIWORD(wParam) == BN_CLICKED) {
-                BrowseFile(hEditCookiesFile, L"Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0", L"Выберите файл cookies");
-            }
-            break;
-        
-        case WM_CTLCOLORSTATIC:
-        {
-            HDC hdcStatic = (HDC)wParam;
-            SetBkColor(hdcStatic, GetSysColor(COLOR_WINDOW));
-            return (INT_PTR)GetSysColorBrush(COLOR_WINDOW);
-        }
-        
-        case WM_CLOSE:
-        {
-            // Сохранение настроек при закрытии
-            SaveSettingsFromUI();
-            settings.Save();
-            DestroyWindow(hwnd);
-            return 0;
-        }
-        
-        case WM_DESTROY:
-            PostQuitMessage(0);
-            return 0;
+    
+    case WM_SIZE: {
+        int width = LOWORD(lParam);
+        int height = HIWORD(lParam);
+        ResizeControls(width, height);
+        break;
     }
-    return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+    
+    case WM_GETMINMAXINFO: {
+        MINMAXINFO* mmi = (MINMAXINFO*)lParam;
+        mmi->ptMinTrackSize.x = 700;
+        mmi->ptMinTrackSize.y = 550;
+        break;
+    }
+    
+    case WM_DESTROY:
+        UpdateSettingsFromControls();
+        SaveSettings();
+        PostQuitMessage(0);
+        break;
+        
+    default:
+        return DefWindowProcW(hWnd, message, wParam, lParam);
+    }
+    return 0;
 }
 
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
-    SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8);
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {
+    g_hInst = hInstance;
     
-    INITCOMMONCONTROLSEX icex;
-    icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
-    icex.dwICC = ICC_PROGRESS_CLASS | ICC_TAB_CLASSES;
-    InitCommonControlsEx(&icex);
+    // Инициализация Common Controls
+    INITCOMMONCONTROLSEX icc;
+    icc.dwSize = sizeof(icc);
+    icc.dwICC = ICC_WIN95_CLASSES | ICC_TAB_CLASSES | ICC_PROGRESS_CLASS;
+    InitCommonControlsEx(&icc);
     
-    CoInitialize(NULL);
+    // Регистрация класса окна
+    WNDCLASSEXW wcex;
+    wcex.cbSize = sizeof(WNDCLASSEX);
+    wcex.style = CS_HREDRAW | CS_VREDRAW;
+    wcex.lpfnWndProc = WndProc;
+    wcex.cbClsExtra = 0;
+    wcex.cbWndExtra = 0;
+    wcex.hInstance = hInstance;
+    wcex.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+    wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wcex.lpszMenuName = NULL;
+    wcex.lpszClassName = L"YtDlpGUI";
+    wcex.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
     
-    const wchar_t CLASS_NAME[] = L"YtDlpGuiClass";
-    
-    WNDCLASSW wc = { };
-    wc.lpfnWndProc = WindowProc;
-    wc.hInstance = hInstance;
-    wc.lpszClassName = CLASS_NAME;
-    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-    
-    RegisterClassW(&wc);
-    
-    // Добавлен WS_THICKFRAME и WS_MAXIMIZEBOX для изменения размера
-    hMainWindow = CreateWindowExW(
-        0,
-        CLASS_NAME,
-        L"yt-dlp GUI - Загрузчик видео",
-        WS_OVERLAPPEDWINDOW, // Вместо WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
-        CW_USEDEFAULT, CW_USEDEFAULT, 600, normalHeight,
-        NULL, NULL, hInstance, NULL
-    );
-    
-    if (hMainWindow == NULL) {
-        return 0;
+    if (!RegisterClassExW(&wcex)) {
+        MessageBoxW(NULL, L"Ошибка регистрации класса окна!", L"Ошибка", MB_OK | MB_ICONERROR);
+        return 1;
     }
     
-    ShowWindow(hMainWindow, nCmdShow);
-    UpdateWindow(hMainWindow);
+    // Создание главного окна
+    g_hMainWnd = CreateWindowExW(0, L"YtDlpGUI", L"yt-dlp GUI",
+                                WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                                CW_USEDEFAULT, 0, 820, 600,
+                                NULL, NULL, hInstance, NULL);
     
-    MSG msg = { };
+    if (!g_hMainWnd) {
+        MessageBoxW(NULL, L"Ошибка создания окна!", L"Ошибка", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+    
+    ShowWindow(g_hMainWnd, nCmdShow);
+    UpdateWindow(g_hMainWnd);
+    
+    // Главный цикл сообщений
+    MSG msg;
     while (GetMessage(&msg, NULL, 0, 0)) {
-        if (!IsDialogMessage(hMainWindow, &msg)) {
+        if (!IsDialogMessage(g_hMainWnd, &msg)) {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
     }
     
-    CoUninitialize();
-    return 0;
+    return (int)msg.wParam;
 }
