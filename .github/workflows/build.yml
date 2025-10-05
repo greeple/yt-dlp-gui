@@ -1,11 +1,7 @@
 name: Build sonn yt-dlp GUI
 
-on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
+on: [push, pull_request]
+  
 
 jobs:
   build-windows:
