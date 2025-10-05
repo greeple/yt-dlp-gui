@@ -16,6 +16,7 @@ target_compile_definitions(yt_dlp_gui PRIVATE
 
 target_link_libraries(yt_dlp_gui PRIVATE
     comctl32
+    comdlg32
     shlwapi
     shell32
     ole32
