@@ -1,80 +1,37 @@
-name: Build Windows GUI
+name: Build C++ Application
 
 on:
+  push:
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-    
-    - name: Setup MinGW
-      uses: msys2/setup-msys2@v2
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up MinGW
+      uses: egor-tensin/setup-mingw@v2
       with:
-        msystem: MINGW64
-        update: true
-        install: >-
-          mingw-w64-x86_64-gcc
-          mingw-w64-x86_64-cmake
-          mingw-w64-x86_64-ninja
-          make
-    
-    - name: Build application
-      shell: msys2 {0}
+        platform: x64
+
+    - name: Compile resources
+      run: windres resource.rc -O coff -o resource.o
+
+    - name: Compile C++ code
+      run: g++ -o yt-dlp-gui.exe main.cpp resource.o -mwindows -lcomctl32 -lshell32 -static -std=c++17 -Wl,-subsystem,windows
+
+    - name: Create Release Artifacts
+      shell: powershell
       run: |
-        mkdir build
-        cd build
-        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release ..
-        ninja
-    
-    #- name: Download yt-dlp
-     # shell: pwsh
-     # run: |
-    #    Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "build/yt-dlp.exe"
-    # Copy-Item "build/yt-dlp.exe" "release/"
-    - name: Create release package
-      shell: pwsh
-      run: |
-        New-Item -ItemType Directory -Force -Path release
-        Copy-Item "build/yt-dlp-gui.exe" "release/"
+        Compress-Archive -Path yt-dlp-gui.exe -DestinationPath yt-dlp-gui.zip
         
-        # Создаем README
-        @"
-        # yt-dlp GUI
-        
-        ## Использование
-        1. Запустите yt-dlp-gui.exe
-        2. Вставьте URL видео
-        3. Выберите качество и формат
-        4. Нажмите 'Скачать'
-        
-        ## Требования
-        - Windows 7 или новее
-        - yt-dlp.exe должен быть в той же папке или в PATH
-        
-        ## Возможности
-        - Скачивание видео в различных качествах (480p - 4K)
-        - Извлечение только аудио (MP3)
-        - Выбор папки сохранения
-        - Отображение прогресса загрузки
-        "@ | Out-File -FilePath "release/README.txt" -Encoding UTF8
-    
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: yt-dlp-gui-windows
-        path: release/
-    
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
+    - name: Create Release and Upload
       uses: softprops/action-gh-release@v2
       with:
-        files: |
-          release/yt-dlp-gui.exe
-          release/yt-dlp.exe
-          release/README.txt
+        files: yt-dlp-gui.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
