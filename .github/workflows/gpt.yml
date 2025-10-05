@@ -1,0 +1,23 @@
+name: build-windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yt-dlp-gui-win64
+          path: |
+            build/Release/yt_dlp_gui.exe
